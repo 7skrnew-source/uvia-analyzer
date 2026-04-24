@@ -1,546 +1,879 @@
-// netlify/functions/analyze.js
-// ═══════════════════════════════════════════════════════════════
-// UVIA MULTI-AGENT SYSTEM v2.0
-// 8 Agent Spesialis — SynthID (D10) & Uncanny Valley (D11)
-// Akses publik: gunakan UVIA_API_KEY dari env jika tidak ada cookie
-// ═══════════════════════════════════════════════════════════════
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UVIA v2.0 — Public Visual Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Bebas+Neue&family=Barlow:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050709;--s1:#0a0f14;--s2:#0f1820;--s3:#151f2a;
+  --b1:#182030;--b2:#1e2d40;
+  --g:#00e5a0;--g2:#00ffb3;--b:#0094ff;--o:#ff6b35;
+  --y:#f5c542;--r:#ff3b5c;--p:#a855f7;--c:#22d3ee;
+  --txt:#7a9ab0;--txt2:#b8d0e0;--txtb:#e0eef8;
+  --mono:'JetBrains Mono',monospace;
+  --head:'Bebas Neue',sans-serif;
+  --sans:'Barlow',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt2);font-family:var(--sans);min-height:100vh;overflow-x:hidden}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 60% 40% at 80% 10%, rgba(0,229,160,.04) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 10% 80%, rgba(0,148,255,.04) 0%, transparent 60%),
+    linear-gradient(rgba(0,229,160,.015) 1px,transparent 1px) 0 0/44px 44px,
+    linear-gradient(90deg,rgba(0,229,160,.015) 1px,transparent 1px) 0 0/44px 44px
+}
+.z1{position:relative;z-index:1}
 
-const { getKeyFromCookie, getAgentKey } = require('./session');
+/* ── MODAL LOGIN OPSIONAL ── */
+#login-modal{
+  position:fixed;inset:0;z-index:999;
+  background:rgba(5,7,9,.92);
+  display:none;align-items:center;justify-content:center;
+}
+#login-modal.show{display:flex;}
+.login-box{
+  width:100%;max-width:440px;padding:0 24px;
+}
+.modal-box{
+  background:var(--s1);padding:24px;border:1px solid var(--b1);border-radius:4px;
+  width:100%;
+}
+.modal-close{float:right;cursor:pointer;color:var(--txt);font-size:16px;line-height:1;}
+.modal-close:hover{color:var(--r);}
+.login-logo{
+  font-family:var(--head);font-size:56px;color:var(--txtb);
+  letter-spacing:.05em;line-height:1;margin-bottom:4px
+}
+.login-logo span{color:var(--g)}
+.login-ver{
+  font-family:var(--mono);font-size:10px;color:var(--txt);
+  letter-spacing:.25em;margin-bottom:20px;display:flex;align-items:center;gap:10px
+}
+.login-ver::before{content:'';width:20px;height:1px;background:var(--g)}
+.login-desc{font-size:14px;color:var(--txt);line-height:1.6;margin-bottom:28px}
+.login-label{
+  font-family:var(--mono);font-size:9px;color:var(--g);
+  letter-spacing:.3em;text-transform:uppercase;display:block;margin-bottom:8px
+}
+.login-input{
+  width:100%;background:var(--s1);border:1px solid var(--b1);
+  color:var(--txtb);font-family:var(--mono);font-size:13px;
+  padding:13px 16px;outline:none;border-radius:2px;transition:border-color .2s
+}
+.login-input:focus{border-color:var(--g)}
+.login-input::placeholder{color:var(--b1)}
+.login-note{
+  font-family:var(--mono);font-size:9px;color:var(--txt);
+  margin-top:6px;line-height:1.6
+}
+.login-note a{color:var(--b);text-decoration:none}
+.login-note a:hover{text-decoration:underline}
+.login-btn{
+  width:100%;margin-top:16px;padding:14px;
+  background:var(--g);color:#000;border:none;
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  letter-spacing:.2em;text-transform:uppercase;cursor:pointer;
+  border-radius:2px;transition:all .2s
+}
+.login-btn:hover:not(:disabled){background:var(--g2);box-shadow:0 4px 20px rgba(0,229,160,.35);transform:translateY(-1px)}
+.login-btn:disabled{opacity:.4;cursor:not-allowed}
+.login-err{
+  margin-top:12px;padding:10px 14px;
+  background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.2);
+  font-family:var(--mono);font-size:10px;color:var(--r);
+  border-radius:2px;display:none
+}
+.login-err.show{display:block}
+.login-security{
+  display:flex;align-items:flex-start;gap:10px;margin-top:20px;
+  padding:12px 14px;background:var(--s1);border:1px solid var(--b1);border-radius:2px
+}
+.lock-icon{color:var(--g);font-size:14px;flex-shrink:0;margin-top:1px}
+.login-security p{font-family:var(--mono);font-size:9px;color:var(--txt);line-height:1.6}
 
-const GEMINI_URL = key =>
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+/* ── NAV ── */
+nav{
+  height:52px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;background:rgba(5,7,9,.92);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--b1);position:sticky;top:0;z-index:100
+}
+.nav-brand{
+  font-family:var(--mono);font-size:11px;color:var(--g);
+  letter-spacing:.2em;display:flex;align-items:center;gap:8px
+}
+.nav-brand::before{content:'▸';font-size:9px}
+.nav-ver{color:var(--txt);font-size:9px}
+.nav-right{display:flex;align-items:center;gap:12px}
+.session-badge{
+  display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:9px;color:var(--txt);
+  padding:5px 10px;border:1px solid var(--b1);border-radius:2px
+}
+.session-dot{width:5px;height:5px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g);animation:pulse 2s ease infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.logout-btn{
+  font-family:var(--mono);font-size:9px;padding:5px 12px;
+  background:transparent;border:1px solid var(--b1);color:var(--txt);
+  cursor:pointer;border-radius:2px;transition:all .2s;letter-spacing:.1em
+}
+.logout-btn:hover{border-color:var(--r);color:var(--r)}
 
-const SAFETY = [
-  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-];
+/* ── AGENT STATUS BAR ── */
+.agent-bar{
+  background:var(--s1);border-bottom:1px solid var(--b1);
+  padding:8px 24px;display:none;gap:6px;flex-wrap:wrap;align-items:center
+}
+.agent-bar.show{display:flex}
+.agent-label{font-family:var(--mono);font-size:9px;color:var(--txt);letter-spacing:.1em;margin-right:4px}
+.agent-chip{
+  font-family:var(--mono);font-size:9px;padding:3px 10px;
+  border-radius:1px;border:1px solid var(--b1);color:var(--txt);
+  transition:all .3s;display:flex;align-items:center;gap:5px
+}
+.agent-chip.running{border-color:var(--y);color:var(--y);background:rgba(245,197,66,.08)}
+.agent-chip.done{border-color:var(--g);color:var(--g);background:rgba(0,229,160,.08)}
+.agent-chip.waiting{border-color:var(--b1);color:var(--txt)}
+.chip-dot{width:4px;height:4px;border-radius:50%;background:currentColor}
+.agent-chip.running .chip-dot{animation:pulse .6s ease infinite}
 
-// ── Audit safety config ───────────────────────────────────
-function auditSafety() {
-  const overrides = [];
-  for (const s of SAFETY) {
-    if (s.threshold === 'BLOCK_NONE') {
-      overrides.push(`${s.category}: ${s.threshold}`);
-    }
-  }
+/* ── LAYOUT ── */
+.layout{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 52px)}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  border-right:1px solid var(--b1);padding:20px;
+  position:sticky;top:52px;height:calc(100vh - 52px);
+  overflow-y:auto;background:var(--s1)
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--b1)}
+.s-label{
+  font-family:var(--mono);font-size:9px;color:var(--g);
+  letter-spacing:.3em;text-transform:uppercase;
+  margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid var(--b1)
+}
+.s-section{margin-bottom:24px}
+.sel-group{display:flex;flex-direction:column;gap:3px}
+.sel-item{
+  display:flex;align-items:center;gap:9px;padding:8px 11px;
+  border:1px solid var(--b1);cursor:pointer;transition:all .15s;
+  border-radius:2px;background:var(--bg)
+}
+.sel-item:hover{border-color:var(--b2);background:var(--s2)}
+.sel-item.active{border-color:var(--g);background:rgba(0,229,160,.05)}
+.sel-dot{width:6px;height:6px;border-radius:50%;border:1px solid var(--b2);flex-shrink:0;transition:all .15s}
+.sel-item.active .sel-dot{background:var(--g);border-color:var(--g);box-shadow:0 0 5px var(--g)}
+.sel-txt{font-family:var(--mono);font-size:9px;color:var(--txt);transition:color .15s}
+.sel-item.active .sel-txt{color:var(--txtb)}
+
+.arch-info{
+  background:var(--bg);border:1px solid var(--b1);padding:14px;
+  border-radius:2px
+}
+.arch-title{
+  font-family:var(--mono);font-size:9px;color:var(--g);
+  letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px
+}
+.arch-agent{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 0;border-bottom:1px solid var(--b1)
+}
+.arch-agent:last-child{border-bottom:none}
+.agent-n{
+  font-family:var(--mono);font-size:9px;color:var(--g);
+  width:20px;flex-shrink:0
+}
+.agent-info{font-size:11px;color:var(--txt2)}
+.agent-dims{font-family:var(--mono);font-size:8px;color:var(--txt);display:block;margin-top:2px}
+.parallel-badge{
+  font-family:var(--mono);font-size:8px;color:var(--y);
+  background:rgba(245,197,66,.1);border:1px solid rgba(245,197,66,.2);
+  padding:2px 6px;border-radius:1px;margin-top:8px;display:inline-block
+}
+.crossref-badge{
+  font-family:var(--mono);font-size:8px;color:var(--c);
+  background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.2);
+  padding:2px 6px;border-radius:1px;margin-top:4px;display:inline-block
+}
+
+/* ── MAIN ── */
+.main{padding:28px 32px;max-width:860px}
+
+/* ── UPLOAD ── */
+.upload-zone{
+  border:1px dashed var(--b2);background:var(--s1);
+  padding:40px;text-align:center;cursor:pointer;
+  transition:all .25s;border-radius:2px;margin-bottom:16px
+}
+.upload-zone:hover,.upload-zone.drag{
+  border-color:var(--g);background:rgba(0,229,160,.03);border-style:solid
+}
+.up-icon{font-size:28px;opacity:.3;margin-bottom:14px}
+.up-title{font-size:15px;font-weight:600;color:var(--txtb);margin-bottom:5px}
+.up-sub{font-family:var(--mono);font-size:10px;color:var(--txt)}
+.up-fmts{margin-top:12px;display:flex;gap:5px;justify-content:center;flex-wrap:wrap}
+.fmt{font-family:var(--mono);font-size:8px;color:var(--g);padding:2px 7px;border:1px solid rgba(0,229,160,.25);border-radius:1px}
+#file-input{display:none}
+
+.prev-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-bottom:14px}
+.prev-item{position:relative;aspect-ratio:1;background:var(--s2);border:1px solid var(--b1);overflow:hidden;border-radius:2px}
+.prev-item img{width:100%;height:100%;object-fit:cover}
+.prev-name{position:absolute;bottom:0;left:0;right:0;background:rgba(5,7,9,.9);padding:3px 6px;font-family:var(--mono);font-size:8px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prev-rm{position:absolute;top:3px;right:3px;width:16px;height:16px;background:rgba(255,59,92,.85);border:none;color:#fff;cursor:pointer;font-size:8px;display:flex;align-items:center;justify-content:center;border-radius:1px}
+.prev-status{position:absolute;top:3px;left:3px;font-family:var(--mono);font-size:7px;padding:2px 4px;border-radius:1px}
+.ps-r{background:rgba(245,197,66,.9);color:#000}
+.ps-d{background:rgba(0,229,160,.9);color:#000}
+.ps-e{background:rgba(255,59,92,.9);color:#fff}
+
+.action-bar{display:none;gap:10px;align-items:center;margin-bottom:24px;flex-wrap:wrap}
+.btn-run{
+  padding:11px 24px;background:var(--g);color:#000;border:none;
+  font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.2em;
+  text-transform:uppercase;cursor:pointer;border-radius:2px;
+  transition:all .2s;display:flex;align-items:center;gap:8px
+}
+.btn-run:hover:not(:disabled){background:var(--g2);box-shadow:0 4px 14px rgba(0,229,160,.3)}
+.btn-run:disabled{opacity:.4;cursor:not-allowed}
+.btn-clr{
+  padding:11px 16px;background:transparent;border:1px solid var(--b2);
+  color:var(--txt);font-family:var(--mono);font-size:9px;cursor:pointer;
+  border-radius:2px;transition:all .2s
+}
+.btn-clr:hover{border-color:var(--r);color:var(--r)}
+.fcnt{font-family:var(--mono);font-size:9px;color:var(--txt);margin-left:auto}
+.spin{width:11px;height:11px;border:2px solid rgba(0,0,0,.2);border-top-color:#000;border-radius:50%;animation:spinning .7s linear infinite;display:none}
+@keyframes spinning{to{transform:rotate(360deg)}}
+.running-now .spin{display:block}
+
+.prog-wrap{height:2px;background:var(--b1);border-radius:1px;display:none;margin-bottom:20px}
+.prog-wrap.show{display:block}
+.prog-bar{height:100%;background:var(--g);width:0%;transition:width .4s;border-radius:1px;box-shadow:0 0 6px var(--g)}
+
+/* ── RESULTS ── */
+.result-card{
+  background:var(--s1);border:1px solid var(--b1);margin-bottom:18px;
+  border-radius:2px;overflow:hidden;
+  animation:fadeUp .35s ease both
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.r-hdr{
+  display:flex;align-items:center;gap:12px;padding:13px 17px;
+  background:var(--bg);border-bottom:1px solid var(--b1);
+  cursor:pointer;user-select:none;transition:background .15s
+}
+.r-hdr:hover{background:var(--s2)}
+.r-file{font-family:var(--mono);font-size:10px;color:var(--txtb);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r-cc{font-family:var(--mono);font-size:8px;color:var(--g);padding:2px 7px;border:1px solid rgba(0,229,160,.25);border-radius:1px}
+.r-agents{font-family:var(--mono);font-size:8px;color:var(--txt)}
+.r-chv{font-size:10px;color:var(--txt);transition:transform .2s;flex-shrink:0}
+.r-chv.open{transform:rotate(180deg)}
+.r-body{padding:20px}
+.r-body.closed{display:none}
+
+/* AGENT BREAKDOWN */
+.agent-breakdown{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:18px
+}
+.ab-item{
+  background:var(--bg);border:1px solid var(--b1);
+  padding:10px;border-radius:2px;position:relative;overflow:hidden
+}
+.ab-item::before{
+  content:'';position:absolute;top:0;left:0;width:2px;height:0;
+  background:var(--item-color,var(--g));transition:height .4s ease .2s
+}
+.ab-item:hover::before{height:100%}
+.ab-num{font-family:var(--mono);font-size:8px;color:var(--item-color,var(--g));letter-spacing:.15em;margin-bottom:4px}
+.ab-name{font-size:11px;font-weight:600;color:var(--txtb);margin-bottom:2px}
+.ab-score{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--item-color,var(--g))}
+.ab-verdict{font-family:var(--mono);font-size:8px;color:var(--txt);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* SCORES TOP */
+.scores-top{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:16px}
+.sc-box{background:var(--bg);border:1px solid var(--b1);padding:12px 8px;text-align:center;border-radius:2px}
+.sc-n{font-family:var(--mono);font-size:20px;font-weight:700;display:block;margin-bottom:2px}
+.sc-l{font-family:var(--mono);font-size:7px;color:var(--txt);letter-spacing:.08em;text-transform:uppercase}
+.cg{color:var(--g)}.cb{color:var(--b)}.co{color:var(--o)}.cp{color:var(--p)}
+
+/* MATRIX */
+.m-hd{font-family:var(--mono);font-size:8px;color:var(--g);letter-spacing:.25em;text-transform:uppercase;margin-bottom:10px}
+.matrix{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
+.m-row{display:grid;grid-template-columns:18px 170px 1fr 140px;align-items:center;gap:8px;padding:6px 9px;background:var(--bg);border:1px solid var(--b1);border-radius:2px}
+.m-lt{font-size:12px;text-align:center}
+.m-dim{font-family:var(--mono);font-size:8px;color:var(--txt)}
+.m-bw{height:2px;background:var(--b1);border-radius:1px;overflow:hidden}
+.m-b{height:100%;border-radius:1px;width:0%;transition:width 1s ease}
+.bg{background:var(--g)}.by{background:var(--y)}.br{background:var(--r)}.bk{background:var(--b2)}
+.m-vd{font-family:var(--mono);font-size:8px;color:var(--txt);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* BADGES */
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}
+.badge{font-family:var(--mono);font-size:8px;letter-spacing:.08em;padding:3px 8px;border-radius:1px;text-transform:uppercase}
+.b-cl{background:rgba(0,229,160,.1);color:var(--g);border:1px solid rgba(0,229,160,.25)}
+.b-wn{background:rgba(245,197,66,.1);color:var(--y);border:1px solid rgba(245,197,66,.25)}
+.b-dg{background:rgba(255,59,92,.1);color:var(--r);border:1px solid rgba(255,59,92,.25)}
+.b-bk{background:var(--r);color:#fff;border:1px solid var(--r)}
+.b-in{background:rgba(0,148,255,.1);color:var(--b);border:1px solid rgba(0,148,255,.25)}
+.b-cr{background:rgba(34,211,238,.1);color:var(--c);border:1px solid rgba(34,211,238,.25)}
+
+/* ACTION PLAN */
+.ap-hd{font-family:var(--mono);font-size:8px;color:var(--o);letter-spacing:.2em;text-transform:uppercase;margin-bottom:8px}
+.ap-list{display:flex;flex-direction:column;gap:4px;margin-bottom:18px}
+.ap-item{display:flex;align-items:flex-start;gap:7px;padding:8px 11px;background:var(--bg);border:1px solid var(--b1);border-radius:2px}
+.ap-dot{width:4px;height:4px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.adc{background:var(--r);box-shadow:0 0 5px var(--r)}.adp{background:var(--y)}.ado{background:var(--b)}
+.ap-txt{font-size:12px;color:var(--txt2);line-height:1.5}
+
+/* D9 */
+.d9-box{margin-bottom:18px}
+.d9-pri{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(0,229,160,.07);border:1px solid rgba(0,229,160,.2);font-family:var(--mono);font-size:10px;color:var(--g);font-weight:700;border-radius:2px;margin-bottom:7px}
+.d9-sec{display:flex;flex-wrap:wrap;gap:4px}
+.d9-si{font-family:var(--mono);font-size:8px;color:var(--txt);padding:2px 7px;border:1px solid var(--b1);border-radius:1px}
+
+/* CROSS-REFERENCE CONFLICTS */
+.conflict-box{background:rgba(255,59,92,.05);border:1px solid rgba(255,59,92,.25);border-radius:2px;padding:12px;margin-bottom:16px}
+.conflict-title{font-family:var(--mono);font-size:8px;color:var(--r);letter-spacing:.2em;margin-bottom:8px}
+.conflict-list{list-style:none;font-family:var(--mono);font-size:10px;color:var(--txt2);line-height:1.7}
+
+/* NARRATIVE */
+.narr{margin-top:18px;padding:16px;background:var(--bg);border-left:2px solid var(--g);border-radius:2px}
+.narr-hd{font-family:var(--mono);font-size:8px;color:var(--g);letter-spacing:.2em;text-transform:uppercase;margin-bottom:10px}
+.narr-txt{font-size:13px;color:var(--txt2);line-height:1.8}
+
+/* ERROR */
+.err{padding:12px 16px;background:rgba(255,59,92,.07);border:1px solid rgba(255,59,92,.2);border-radius:2px;font-family:var(--mono);font-size:10px;color:var(--r)}
+
+/* EMPTY */
+.empty{text-align:center;padding:64px 40px;border:1px dashed var(--b1);border-radius:2px;background:var(--s1)}
+.empty-ico{font-size:32px;opacity:.2;margin-bottom:12px}
+.empty-t{font-size:14px;font-weight:600;color:var(--txtb);margin-bottom:5px}
+.empty-s{font-family:var(--mono);font-size:9px;color:var(--txt)}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:static;height:auto;border-right:none;border-bottom:1px solid var(--b1)}
+  .main{padding:20px 16px}
+  .scores-top{grid-template-columns:repeat(2,1fr)}
+  .agent-breakdown{grid-template-columns:repeat(2,1fr)}
+  .m-row{grid-template-columns:16px 130px 1fr}
+  .m-vd{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- MODAL LOGIN OPSIONAL -->
+<div id="login-modal">
+  <div class="modal-box">
+    <span class="modal-close" onclick="closeLoginModal()">✕</span>
+    <div class="login-logo" style="font-size:28px;">UVIA<span> Key</span></div>
+    <div class="login-ver">PERSONAL API KEY</div>
+    <p class="login-desc" style="font-size:12px; margin-bottom:16px;">
+      Masukkan Gemini API key Anda sendiri jika kuota publik habis.
+    </p>
+    <label class="login-label">Gemini API Key</label>
+    <input class="login-input" type="password" id="modal-key-input" placeholder="AIzaSy..." autocomplete="off">
+    <div class="login-note">
+      Dapatkan key gratis di <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>
+    </div>
+    <button class="login-btn" id="modal-login-btn" onclick="doModalLogin()">SIMPAN KEY</button>
+    <div class="login-err" id="modal-login-err"></div>
+    <div class="login-security" style="margin-top:12px;">
+      <span class="lock-icon">🔒</span>
+      <p>Key disimpan aman di HTTP-only cookie.</p>
+    </div>
+  </div>
+</div>
+
+<!-- NAVBAR -->
+<nav class="z1">
+  <div class="nav-brand">UVIA <span class="nav-ver">/ v2.0 Public</span></div>
+  <div class="nav-right">
+    <div class="session-badge" id="session-badge">
+      <div class="session-dot"></div>
+      <span id="session-label">Public Key</span>
+    </div>
+    <button class="logout-btn" id="login-btn-nav" onclick="openLoginModal()">GANTI KEY</button>
+  </div>
+</nav>
+
+<!-- AGENT STATUS BAR -->
+<div class="agent-bar z1" id="agent-bar">
+  <span class="agent-label">AGENTS:</span>
+  <div class="agent-chip waiting" id="chip-a1"><div class="chip-dot"></div>A1 Origin</div>
+  <div class="agent-chip waiting" id="chip-a2"><div class="chip-dot"></div>A2 Human+AI</div>
+  <div class="agent-chip waiting" id="chip-a3"><div class="chip-dot"></div>A3 Forensic</div>
+  <div class="agent-chip waiting" id="chip-a4"><div class="chip-dot"></div>A4 Safety+IP</div>
+  <div class="agent-chip waiting" id="chip-a5"><div class="chip-dot"></div>A5 Value</div>
+  <div class="agent-chip waiting" id="chip-a6"><div class="chip-dot"></div>A6 Synthesis</div>
+  <div class="agent-chip waiting" id="chip-a7"><div class="chip-dot"></div>A7 SynthID</div>
+  <div class="agent-chip waiting" id="chip-a8"><div class="chip-dot"></div>A8 Uncanny</div>
+</div>
+
+<div class="layout z1">
+
+  <aside class="sidebar">
+    <div class="s-section">
+      <div class="s-label">Tujuan Analisis</div>
+      <div class="sel-group" id="uc-group">
+        <div class="sel-item active" data-val="Semua / Umum" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">Semua / Umum</span></div>
+        <div class="sel-item" data-val="Forensik Digital" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">Forensik Digital</span></div>
+        <div class="sel-item" data-val="Monetisasi Konten" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">Monetisasi Konten</span></div>
+        <div class="sel-item" data-val="Stock / Lisensi" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">Stock / Lisensi</span></div>
+        <div class="sel-item" data-val="E-Commerce" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">E-Commerce</span></div>
+        <div class="sel-item" data-val="Hak Cipta / Legal" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">Hak Cipta / Legal</span></div>
+        <div class="sel-item" data-val="Kurasi Portofolio" onclick="pick(this,'uc-group')"><div class="sel-dot"></div><span class="sel-txt">Kurasi Portofolio</span></div>
+      </div>
+    </div>
+
+    <div class="s-section">
+      <div class="s-label">Platform Target</div>
+      <div class="sel-group" id="pl-group">
+        <div class="sel-item active" data-val="Umum" onclick="pick(this,'pl-group')"><div class="sel-dot"></div><span class="sel-txt">Umum</span></div>
+        <div class="sel-item" data-val="Instagram / TikTok" onclick="pick(this,'pl-group')"><div class="sel-dot"></div><span class="sel-txt">Instagram / TikTok</span></div>
+        <div class="sel-item" data-val="YouTube / Video" onclick="pick(this,'pl-group')"><div class="sel-dot"></div><span class="sel-txt">YouTube / Video</span></div>
+        <div class="sel-item" data-val="Getty / Adobe Stock" onclick="pick(this,'pl-group')"><div class="sel-dot"></div><span class="sel-txt">Getty / Adobe Stock</span></div>
+        <div class="sel-item" data-val="Marketplace" onclick="pick(this,'pl-group')"><div class="sel-dot"></div><span class="sel-txt">Marketplace</span></div>
+        <div class="sel-item" data-val="Blog / Website" onclick="pick(this,'pl-group')"><div class="sel-dot"></div><span class="sel-txt">Blog / Website</span></div>
+      </div>
+    </div>
+
+    <div class="s-section">
+      <div class="s-label">Arsitektur Agent</div>
+      <div class="arch-info">
+        <div class="arch-title">8 AGEN PARALEL</div>
+        <div class="arch-agent"><div class="agent-n">A1</div><div class="agent-info">Origin Auth<span class="agent-dims">D1 — Sensor & Optik</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A2</div><div class="agent-info">Human + AI<span class="agent-dims">D2 + D3</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A3</div><div class="agent-info">Forensik<span class="agent-dims">D4 — Manipulasi</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A4</div><div class="agent-info">Safety + IP<span class="agent-dims">D5 + D8</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A5</div><div class="agent-info">Nilai<span class="agent-dims">D6 + D7</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A6</div><div class="agent-info">Synthesis<span class="agent-dims">D9 + Cross-Ref</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A7</div><div class="agent-info">SynthID<span class="agent-dims">D10 — Watermark AI</span></div></div>
+        <div class="arch-agent"><div class="agent-n">A8</div><div class="agent-info">Uncanny<span class="agent-dims">D11 — AI Aura</span></div></div>
+        <div class="parallel-badge">⚡ A1, A3, A4, A5, A7, A8 — paralel</div>
+        <div class="crossref-badge">⇄ Cross-Reference Detection</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="upload-zone" id="drop-zone"
+      onclick="document.getElementById('file-input').click()"
+      ondragover="e=>{e.preventDefault();document.getElementById('drop-zone').classList.add('drag')}"
+      ondragleave="document.getElementById('drop-zone').classList.remove('drag')"
+      ondrop="e=>{e.preventDefault();document.getElementById('drop-zone').classList.remove('drag');addFiles(e.dataTransfer.files)}">
+      <div class="up-icon">⬆</div>
+      <div class="up-title">Upload Gambar</div>
+      <div class="up-sub">Drag & drop atau klik — max 3 gambar sekaligus</div>
+      <div class="up-fmts"><span class="fmt">JPG</span><span class="fmt">PNG</span><span class="fmt">WEBP</span><span class="fmt">Max 5MB</span></div>
+    </div>
+    <input type="file" id="file-input" multiple accept="image/*" onchange="addFiles(this.files)">
+
+    <div class="prev-grid" id="prev-grid"></div>
+
+    <div class="action-bar" id="action-bar">
+      <button class="btn-run" id="btn-run" onclick="runAnalysis()">
+        <div class="spin" id="spin"></div>
+        <span id="btn-lbl">ANALISIS 8-AGEN</span>
+      </button>
+      <button class="btn-clr" onclick="clearAll()">HAPUS</button>
+      <div class="fcnt" id="fcnt"></div>
+    </div>
+
+    <div class="prog-wrap" id="prog-wrap">
+      <div class="prog-bar" id="prog-bar"></div>
+    </div>
+
+    <div id="results">
+      <div class="empty" id="empty-state">
+        <div class="empty-ico">◈</div>
+        <div class="empty-t">Belum Ada Hasil</div>
+        <div class="empty-s">Upload gambar lalu klik Analisis 8-Agen</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────
+let files = [];
+
+// ── SIDEBAR ────────────────────────────────────────────────
+function pick(el, gid) {
+  document.querySelectorAll(`#${gid} .sel-item`).forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+}
+function cfg() {
   return {
-    is_default: overrides.length <= 1,
-    overrides,
-    note: overrides.length > 1
-      ? `⚠️ NON-DEFAULT SAFETY: ${overrides.length} filter dalam posisi BLOCK_NONE`
-      : 'Default safety configuration'
+    useCase: document.querySelector('#uc-group .sel-item.active')?.dataset.val || 'Umum',
+    platform: document.querySelector('#pl-group .sel-item.active')?.dataset.val || 'Umum',
   };
 }
 
-// ── Panggil satu agent Gemini ─────────────────────────────
-async function callAgent(apiKey, base64, mimeType, prompt, temperature = 0.1) {
-  if (!apiKey) throw new Error('API key tidak tersedia');
-  const res = await fetch(GEMINI_URL(apiKey), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64 } },
-          { text: prompt }
-        ]
-      }],
-      generationConfig: { maxOutputTokens: 1500, temperature },
-      safetySettings: SAFETY,
-    })
+// ── MODAL LOGIN ────────────────────────────────────────────
+function openLoginModal() {
+  document.getElementById('login-modal').classList.add('show');
+}
+function closeLoginModal() {
+  document.getElementById('login-modal').classList.remove('show');
+  document.getElementById('modal-login-err').classList.remove('show');
+  document.getElementById('modal-key-input').value = '';
+}
+async function doModalLogin() {
+  const key = document.getElementById('modal-key-input').value.trim();
+  const errEl = document.getElementById('modal-login-err');
+  if (!key.startsWith('AIza')) {
+    errEl.textContent = 'Format key tidak valid. Harus dimulai dengan "AIza..."';
+    errEl.classList.add('show');
+    return;
+  }
+  try {
+    const res = await fetch('/.netlify/functions/session', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: key })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal menyimpan key');
+    // Sukses
+    document.getElementById('session-label').textContent = 'Your Key';
+    closeLoginModal();
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.classList.add('show');
+  }
+}
+
+// ── CEK SESSION AWAL ────────────────────────────────────────
+async function checkSession() {
+  try {
+    // Cek apakah ada cookie dengan mencoba memanggil endpoint session
+    const res = await fetch('/.netlify/functions/session', {
+      method: 'POST',
+      credentials: 'include',
+      body: '{}'
+    });
+    if (res.ok) {
+      document.getElementById('session-label').textContent = 'Your Key';
+    }
+  } catch(e) {}
+}
+checkSession();
+
+// ── FILES ──────────────────────────────────────────────────
+function addFiles(fl) {
+  Array.from(fl).forEach(f => {
+    if (!f.type.startsWith('image/') || f.size > 5*1024*1024) return;
+    if (files.find(x => x.name === f.name && x.size === f.size)) return;
+    if (files.length >= 3) return;
+    files.push(f);
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `Gemini error ${res.status}`);
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error(`Agent tidak menghasilkan teks. Alasan: ${data?.candidates?.[0]?.finishReason}`);
-  return text;
+  renderPrev();
 }
 
-// ── Ekstrak JSON ──────────────────────────────────────────
-function extractJSON(text) {
-  const m = text.match(/```json\s*([\s\S]*?)\s*```/);
-  if (m) { try { return JSON.parse(m[1]); } catch {} }
-  try { return JSON.parse(text); } catch {}
-  return null;
+function removeFile(i) { files.splice(i,1); renderPrev(); }
+function clearAll() { files=[]; renderPrev(); }
+
+function renderPrev() {
+  const grid = document.getElementById('prev-grid');
+  const bar = document.getElementById('action-bar');
+  if (!files.length) { grid.style.display='none'; bar.style.display='none'; return; }
+  grid.style.display='grid'; bar.style.display='flex';
+  document.getElementById('fcnt').textContent = `${files.length}/3`;
+  grid.innerHTML='';
+  files.forEach((f,i) => {
+    const url = URL.createObjectURL(f);
+    const d = document.createElement('div');
+    d.className='prev-item'; d.id=`pi-${i}`;
+    d.innerHTML=`<img src="${url}"><button class="prev-rm" onclick="removeFile(${i})">✕</button><div class="prev-name">${f.name}</div>`;
+    grid.appendChild(d);
+  });
 }
 
-// ════════════════════════════════════════════════════════════
-// 8 PROMPT AGENT (tidak berubah dari versi sebelumnya)
-// ════════════════════════════════════════════════════════════
-
-// AGENT 1 — Origin (D1)
-const AGENT_ORIGIN = (file) => `
-Anda adalah UVIA Agent-1: Spesialis ORIGIN AUTHENTICITY.
-Tugas TUNGGAL: Identifikasi Content Class dan analisis keaslian asal piksel.
-Fokus HANYA pada D1. Abaikan aspek lain.
-
-FILE: ${file}
-
-LANGKAH 1 — TENTUKAN CONTENT CLASS:
-Pilih SATU yang paling dominan:
-CC-A Portrait/Human | CC-B Landscape/Nature | CC-C Aerial/Drone
-CC-D Wildlife/Action | CC-E Documentary | CC-F Product/Food
-CC-G Architecture | CC-H Analog/Archival | CC-I Illustration/Abstract
-CC-J Render/CGI/Game | CC-K Graphic/Typography | CC-L Composite | CC-M Screenshot
-
-Context otomatis:
-- CC-H grain=positif | CC-C no-foreground=normal | CC-D blur=nyata
-- CC-I/J/K no-camera-physics=normal → D1 = NOT APPLICABLE (skip D1, beri tahu Agent 2 untuk FORCE TRIGGER D3)
-
-LANGKAH 2 — ANALISIS D1 (Not Applicable jika CC-I,J,K):
-D1.1 Sensor (40%): sensor_noise_pattern | bayer_demosaic_artifact | highlight_clipping_natural | jpeg_block_artifact | fixed_pattern_noise → score = true_count/5
-D1.2 Optik (40%): chromatic_aberration | lens_distortion | optical_vignetting | authentic_lens_flare(skip jika N/A) | focus_plane_physics → score = true_count/applicable
-D1.3 Modifier (20%):
-  CC-H: film_grain_structure|color_aging_shift|scan_artifact
-  CC-C: atmospheric_haze_depth|drone_sensor_noise
-  CC-D: motion_blur_directional|rolling_shutter|high_iso_grain
-  CC-E: mixed_color_temp|candid_motion_blur|depth_chaos
-  Lainnya: 0.50
-D1_FINAL = (D1.1×0.40)+(D1.2×0.40)+(D1.3×0.20)
-Verdict: ≥0.70=SENSOR AUTHENTIC|0.45-0.69=LIKELY AUTHENTIC|0.25-0.44=AMBIGUOUS|<0.25=NOT DETECTED|N/A
-
-Balas HANYA dalam format JSON:
-\`\`\`json
-{"content_class":"","context_modifier":[],"D1":{"score":0.00,"verdict":"","applicable":true,"key_findings":""},"traffic_light":"green"}
-\`\`\`
-`;
-
-// AGENT 2 — Human Involvement (D2) + AI Detection (D3) — REVISED
-const AGENT_HUMAN_AI = (file, cc, forceTriggerD3 = false) => `
-Anda adalah UVIA Agent-2: Spesialis HUMAN INVOLVEMENT & AI DETECTION.
-Tugas TUNGGAL: Ukur keterlibatan manusia (D2) dan deteksi tanda AI generatif (D3).
-Fokus HANYA pada D2 dan D3. Abaikan aspek lain.
-
-FILE: ${file} | CONTENT CLASS: ${cc || 'belum diketahui, identifikasi sendiri'}
-${forceTriggerD3 ? '⚠️ FORCE TRIGGER D3: Content Class ini WAJIB menjalankan D3 detection secara menyeluruh, bahkan jika D1 terlihat normal.' : ''}
-
-D2 — KETERLIBATAN MANUSIA:
-D2.1 Capture (35%): moment_decisive|subject_selection|perspective_intentional|framing_deliberate|light_response
-D2.2 Post-Capture (35%): crop_reframe_evidence|local_adjustment|color_grade_applied|element_added|compression_reexport
-D2.3 Creative (30%): artistic_decision_visible|imperfection_intentional|narrative_element|signature_style
-
-⚠️ ATURAN BARU WATERMARK:
-Deteksi watermark DAN klasifikasikan tipenya:
-1. watermark_ai_generated → "Generated by AI", logo generator AI (Gemini, Midjourney, DALL-E), pola SynthID-like
-2. watermark_stock → Shutterstock, Getty, Adobe Stock, dll.
-3. watermark_artist → tanda tangan seniman, logo studio
-4. watermark_foreign → milik pihak ketiga yang tidak dikenal
-
-EFEK PADA SKOR:
-- watermark_ai_generated terdeteksi → kurangi D2.2 sebesar 0.30 (pengurangan, bukan ke nol)
-- watermark_stock → NETRAL, catat saja
-- watermark_artist → NETRAL, bisa jadi seniman asli
-- watermark_foreign → catat sebagai catatan
-
-KALKULASI D2:
-D2.2_raw = true_count/applicable
-D2.2_adjusted = Math.max(0, D2.2_raw - (watermark_ai_generated ? 0.30 : 0))
-D2_FINAL = (D2.1×0.35)+(D2.2_adjusted×0.35)+(D2.3×0.30)
-Verdict: ≥0.70=HIGH|0.45-0.69=MODERATE|0.25-0.44=LOW|<0.25=MINIMAL
-
-D3 — DETEKSI AI GENERATIF:
-⚠️ D3 WAJIB dijalankan jika:
-- forceTriggerD3 = true (CC-I/J/K)
-- ATAU D1_FINAL < 0.45 (Origin rendah)
-- ATAU D2 menunjukkan watermark_ai_generated
-
-D3.1 Artifacts (50%): anatomy_failure|text_incoherence|pattern_repetition|object_merging|background_melting|impossible_lighting|hyper_smooth_skin
-
-D3.2 Style (35%): midjourney_aesthetic|sdxl_noise|dalle_flat|over_cinematic|hyper_detail_blur|face_too_symmetrical|environment_perfect
-
-⚠️ METRIK TAMBAHAN UNTUK CC-I/J/K (ILUSTRASI/RENDER):
-Jika CC termasuk CC-I, CC-J, atau CC-K, periksa JUGA:
-D3.2_illustration: same_face_syndrome|line_weight_uniform|detail_overload_no_focus|gradient_banding_ai|style_inconsistency_micro
-Bobot: 50% D3.2_illustration + 50% D3.2_original
-
-D3.3 Video (15%): temporal_flicker|face_warp|hair_flicker|bg_inconsistency (0.00 jika bukan video)
-
-D3_FINAL = (D3.1×0.50)+(D3.2×0.35)+(D3.3×0.15)
-Verdict: ≥0.60=HIGH AI|0.35-0.59=MODERATE|0.15-0.34=LOW|<0.15=MINIMAL
-
-Balas HANYA JSON:
-\`\`\`json
-{
-  "D2": {
-    "score": 0.00,
-    "verdict": "",
-    "key_findings": "",
-    "watermark_present": false,
-    "watermark_type": "none|ai_generated|stock|artist|foreign",
-    "watermark_note": ""
-  },
-  "D3": {
-    "triggered": false,
-    "score": 0.00,
-    "verdict": "",
-    "key_findings": "",
-    "force_triggered_for_cc": ${forceTriggerD3 ? 'true' : 'false'}
-  },
-  "D2_traffic": "green",
-  "D3_traffic": "green"
+function setChipStatus(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = `agent-chip ${state}`;
+  if (state === 'done') {
+    if (!el.textContent.startsWith('✓')) el.innerHTML = '✓ ' + el.textContent.trim();
+  }
 }
-\`\`\`
-`;
 
-// AGENT 3 — Forensics (D4)
-const AGENT_FORENSIC = (file) => `
-Anda adalah UVIA Agent-3: Spesialis DIGITAL FORENSICS.
-Tugas TUNGGAL: Deteksi manipulasi, splicing, dan deepfake.
-Fokus HANYA pada D4. Abaikan aspek lain.
-⚠️ Analisis ini bersifat indikatif berbasis visual — TIDAK konklusif secara hukum.
-
-FILE: ${file}
-
-D4.1 Manipulation (30%): clone_stamp_visible|healing_artifact|perspective_inconsistency|scale_error|shadow_direction_mismatch|edge_ghosting → score=true/6
-D4.2 Composite/Splicing (30%): lighting_source_conflict|color_temperature_conflict|compression_inconsistency|noise_level_inconsistency|grain_mismatch|resolution_inconsistency → score=true/6
-D4.3 Deepfake/Face (25% — HANYA jika ada wajah): face_boundary_artifact|skin_texture_inconsistent|teeth_background_anomaly|ear_hair_merging|facial_symmetry_unnatural → score=true/5 (0.00 jika tidak ada wajah)
-D4.4 Context Conflict (15%): timestamp_shadow_conflict|season_environment_conflict|object_anachronism → score=true/3
-D4_FINAL = (D4.1×0.30)+(D4.2×0.30)+(D4.3×0.25)+(D4.4×0.15)
-Verdict: <0.15=CLEAN|0.15-0.34=LOW CONCERN|0.35-0.59=MODERATE|≥0.60=HIGH CONCERN|≥0.80=CRITICAL
-
-Balas HANYA JSON:
-\`\`\`json
-{"D4":{"score":0.00,"verdict":"","face_detected":false,"key_findings":""},"traffic_light":"green"}
-\`\`\`
-`;
-
-// AGENT 4 — Safety (D5) + IP (D8)
-const AGENT_SAFETY_IP = (file) => `
-Anda adalah UVIA Agent-4: Spesialis CONTENT SAFETY & IP RISK.
-Tugas TUNGGAL: Periksa keamanan konten dan risiko hak kekayaan intelektual.
-Fokus HANYA pada D5 dan D8. Abaikan aspek lain.
-
-FILE: ${file}
-
-D5 — KEAMANAN KONTEN (BINARY — bukan skor):
-Hard Blockers (1+ = BLOCKED — berhenti rekomendasikan posting):
-explicit_sexual_content|minor_safety_concern|graphic_violence_gore|hate_symbol_visible|self_harm_glorification|illegal_item_prominent
-Soft Flags (kontekstual):
-nudity_non_explicit|violence_non_graphic|sensitive_historical|political_content|health_misinformation_risk|before_after_body|substance_use_depicted
-Privacy:
-identifiable_person|location_inferable|private_info_visible|crowd_identifiable
-D5_STATUS: CLEAN / MODERATE_RISK / HIGH_RISK / BLOCKED
-
-D8 — RISIKO IP:
-D8.1 Copyright risk (hitung true): branded_logo_visible|copyrighted_artwork|licensed_character|music_notation|watermark_foreign
-D8.2 Trademark risk: product_brand_prominent|storefront_logo|event_brand
-D8.3 Personality risk: celebrity_recognizable|public_figure_context|likeness_commercial_use
-D8_TOTAL = semua risk dijumlah
-D8_FINAL = MAX(0, 1.00 - (D8_TOTAL × 0.15))
-Verdict: ≥0.85=CLEAN|0.70-0.84=LOW|0.50-0.69=MODERATE|<0.50=HIGH|<0.25=CRITICAL
-
-Balas HANYA JSON:
-\`\`\`json
-{"D5":{"status":"CLEAN","hard_blocks":[],"soft_flags":[],"privacy_flags":[]},"D8":{"score":0.00,"verdict":"","risks_detected":[]},"D5_traffic":"green","D8_traffic":"green"}
-\`\`\`
-`;
-
-// AGENT 5 — Monetization (D6) + Creative (D7)
-const AGENT_VALUE = (file, platform) => `
-Anda adalah UVIA Agent-5: Spesialis MONETIZATION & CREATIVE VALUE.
-Tugas TUNGGAL: Nilai kelayakan monetisasi dan nilai kreatif konten.
-Fokus HANYA pada D6 dan D7. Abaikan aspek lain.
-
-FILE: ${file} | PLATFORM TARGET: ${platform}
-
-D6 — MONETISASI:
-D6.1 Technical (30%): resolution_adequate|exposure_correct|focus_subject_sharp|composition_functional|color_balance_acceptable → score=true/5
-D6.2 Commercial (35%): subject_demand_high|emotional_resonance|versatile_usage|clean_background|universal_appeal → score=true/5
-D6.3 Platform ${platform} (35%): pilih indikator paling relevan:
-  Stock: model_release_likely|property_release_likely|ai_disclosure_needed|technical_stock_grade
-  YouTube: advertiser_friendly|ai_disclosure_needed|reused_content_risk|thumbnail_policy_safe
-  Instagram/TikTok: authentic_feel|trend_relevant|ai_label_required
-  Marketplace: product_visible|no_misleading|clean_bg|multiple_angle
-  Umum: gunakan kombinasi
-D6_FINAL = (D6.1×0.30)+(D6.2×0.35)+(D6.3×0.35)
-Verdict: ≥0.75=READY|0.55-0.74=READY W/ADJ|0.35-0.54=NEEDS WORK|<0.35=NOT READY
-
-D7 — NILAI KREATIF:
-D7.1 Originality (35%): unique_perspective|non_cliche_subject|distinctive_style|unexpected_element
-D7.2 Execution (35%): technical_mastery|intentional_aesthetic|cohesive_visual_language|emotional_depth
-D7.3 Market (30%): stands_out_in_feed|memorable_single_element|production_value_high|trend_transcendent
-D7_FINAL = (D7.1×0.35)+(D7.2×0.35)+(D7.3×0.30)
-Verdict: ≥0.75=EXCEPTIONAL|0.55-0.74=STRONG|0.35-0.54=AVERAGE|<0.35=WEAK
-
-Balas HANYA JSON:
-\`\`\`json
-{"D6":{"score":0.00,"verdict":"","disclosure_needed":false,"key_findings":""},"D7":{"score":0.00,"verdict":"","key_findings":""},"D6_traffic":"green","D7_traffic":"green"}
-\`\`\`
-`;
-
-// AGENT 6 — Synthesis (D9) + Cross-Reference
-const AGENT_SYNTHESIS = (file, useCase, platform, agentResults, safetyConfig) => `
-Anda adalah UVIA Agent-6: Spesialis SYNTHESIS, USAGE CLASSIFICATION & CROSS-REFERENCE.
-Tugas TUNGGAL: Baca hasil SEMUA agent (sekarang 8 agent), deteksi kontradiksi,
-tentukan D9, buat action plan, dan tulis narasi forensik.
-
-FILE: ${file} | USE CASE: ${useCase} | PLATFORM: ${platform}
-SAFETY CONFIG: ${JSON.stringify(safetyConfig || {})}
-
-HASIL DARI SEMUA AGENT:
-${JSON.stringify(agentResults, null, 2)}
-
-TUGAS ANDA:
-
-0. DETEKSI KONTRADIKSI (CROSS-REFERENCE) — LAKUKAN PERTAMA:
-   Periksa kombinasi berikut dan beri peringatan jika terpicu:
-
-   ⚠️ D1 ≥ 0.70 + D11 ≥ 0.50:
-      → "AMBIGUOUS: Foto dengan tanda keaslian TINGGI tapi juga memiliki AI aura signifikan."
-
-   ⚠️ D3 < 0.30 + D11 ≥ 0.60:
-      → "AI EVASION SUSPECTED: AI aura tinggi tapi D3 tidak mendeteksi."
-
-   ⚠️ D10 ≥ 0.30 + D3 < 0.30:
-      → "SYNTHID/WATERMARK AI TERDETEKSI tapi D3 MINIMAL. D3 under-trigger."
-
-   ⚠️ CC = CC-I/J/K + D2 ≥ 0.80 + D3 < 0.30:
-      → "PROBABLE AI MASTERPIECE: Ilustrasi dengan skor human tinggi tapi deteksi AI rendah."
-
-   ⚠️ D10 ≥ 0.50:
-      → "SYNTHID LIKELY: Override semua skor human involvement ke LOW."
-
-   ⚠️ SAFETY non-default:
-      → "Perhatian: Safety filter API dalam kondisi non-default. Hasil mungkin tidak mencerminkan produksi."
-
-1. Tentukan D9 PRIMARY USE CASE:
-   Editorial/Jurnalistik | Komersial/Iklan | Stock Photography | Konten Kreator/Sosmed
-   Seni/Portofolio | Dokumentasi/Arsip | Bukti/Forensik | E-Commerce/Produk
-   Tidak Direkomendasikan Publik
-
-2. Tentukan D9 secondary (semua yang relevan)
-
-3. Buat ACTION PLAN:
-   critical: hal yang HARUS diselesaikan (maks 3, termasuk dari kontradiksi)
-   priority: sangat disarankan (maks 3)
-   optional: optimasi (maks 2)
-
-4. Tulis NARASI FORENSIK 8-10 kalimat:
-   Kalimat 1: Content Class + konteks
-   Kalimat 2: Origin D1 + SynthID D10
-   Kalimat 3: AI Detection D3 + AI Aura D11
-   Kalimat 4: Keterlibatan manusia D2 + watermark
-   Kalimat 5: Status forensik D4
-   Kalimat 6: Keamanan D5 + IP D8
-   Kalimat 7: Monetisasi D6 + Kreatif D7
-   Kalimat 8: Klasifikasi D9
-   Kalimat 9: TEMUAN KONTRADIKSI (jika ada)
-   Kalimat 10: Aksi paling mendesak
-
-Balas HANYA JSON:
-\`\`\`json
-{
-  "D9": {"primary":"","secondary":[],"warnings":[]},
-  "cross_reference": {
-    "conflicts": [],
-    "conflict_details": "",
-    "overrides_applied": []
-  },
-  "action_plan": {"critical":[],"priority":[],"optional":[]},
-  "narrative": ""
+function resetChips() {
+  const ids = ['chip-a1','chip-a2','chip-a3','chip-a4','chip-a5','chip-a6','chip-a7','chip-a8'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.className = 'agent-chip waiting';
+      const text = el.textContent.trim();
+      el.innerHTML = `<div class="chip-dot"></div>${text}`;
+    }
+  });
 }
-\`\`\`
-`;
 
-// AGENT 7 — SynthID (D10)
-const AGENT_SYNTHID = (file) => `
-Anda adalah UVIA Agent-7: Spesialis SYNTHID & AI WATERMARK DETECTION.
-Tugas TUNGGAL: Cari tanda watermark generatif AI, baik visual maupun pola tersembunyi.
-Fokus HANYA pada D10. Abaikan aspek lain.
+// ── ANALYSIS ───────────────────────────────────────────────
+async function runAnalysis() {
+  if (!files.length) return;
 
-FILE: ${file}
+  const btn = document.getElementById('btn-run');
+  const lbl = document.getElementById('btn-lbl');
+  const spin = document.getElementById('spin');
+  const progWrap = document.getElementById('prog-wrap');
+  const progBar = document.getElementById('prog-bar');
+  const agentBar = document.getElementById('agent-bar');
 
-⚠️ PENTING: SynthID adalah watermark kriptografis yang disematkan Google pada gambar yang dihasilkan Gemini.
-SynthID TIDAK KASAT MATA secara langsung, tapi kadang meninggalkan jejak visual:
-- Pola grid/checkerboard sangat halus di area gelap
-- Artefak frekuensi tinggi di saluran warna tertentu (biru, merah)
-- Tekstur "berulang" yang tidak natural di area latar
+  btn.disabled = true;
+  btn.classList.add('running-now');
+  spin.style.display = 'block';
+  progWrap.classList.add('show');
+  progBar.style.width = '0%';
+  agentBar.classList.add('show');
+  resetChips();
+  document.getElementById('empty-state')?.remove();
 
-Selain SynthID, cari juga WATERMARK AI GENERATIF VISUAL:
-- Teks "Generated by", "Created with AI", "AI-generated"
-- Logo khas generator (Google AI, Gemini, Imagen)
-- Tanda air digital lain yang terlihat
+  const phase1Chips = ['chip-a1','chip-a3','chip-a4','chip-a5','chip-a7','chip-a8'];
+  phase1Chips.forEach(id => setChipStatus(id, 'running'));
+  lbl.textContent = 'FASE 1 — 6 AGENT PARALEL...';
+  progBar.style.width = '12%';
 
-D10.1 SynthID Heuristic (50%): synthid_grid_pattern|synthid_color_channel_artifact|synthid_edge_pattern|synthid_metadata_text_visible → score=true/4
-D10.2 AI Watermark Visual (50%): ai_disclaimer_text_visible|ai_generator_logo|ai_watermark_pattern → score=true/3
-D10_FINAL = (D10.1×0.50)+(D10.2×0.50)
-Verdict: ≥0.60=HIGH|0.30-0.59=MODERATE|0.10-0.29=LOW|<0.10=NONE DETECTED
-
-Balas HANYA JSON:
-\`\`\`json
-{
-  "D10": {
-    "score": 0.00,
-    "verdict": "",
-    "synthid_possible": false,
-    "ai_watermark_visible": false,
-    "watermark_description": "",
-    "key_findings": "",
-    "disclaimer": "SynthID detection is heuristic-only. Official decoder required for conclusive verification."
-  },
-  "traffic_light": "green"
-}
-\`\`\`
-`;
-
-// AGENT 8 — Uncanny Valley (D11)
-const AGENT_UNCANNY = (file, cc) => `
-Anda adalah UVIA Agent-8: Spesialis UNCANNY VALLEY & AI AURA DETECTION.
-Tugas TUNGGAL: Deteksi "rasa AI" — kesempurnaan yang tidak wajar.
-Fokus HANYA pada D11. Abaikan aspek lain.
-
-FILE: ${file} | CONTENT CLASS: ${cc || 'unknown'}
-
-⚠️ KONSEP: Gambar AI sering kali TERLALU SEMPURNA. Kesempurnaan tidak manusiawi ini disebut "Uncanny Valley".
-
-D11.1 OVER-PERFECTION (35%): face_symmetry_too_high|skin_texture_uniform|lighting_calculated|detail_distribution_flat|color_harmony_algorithmic → score=true/5
-D11.2 CREATIVE UNIFORMITY (35%): no_micro_inconsistency|style_too_consistent|texture_tiling_visible|edge_sharpness_uniform|ai_signature_style → score=true/5
-D11.3 CALCULATED CHAOS (30%): noise_pattern_algorithmic|motion_blur_mathematical|depth_chaos_unnatural|chaos_distribution_even → score=true/4
-D11_FINAL = (D11.1×0.35)+(D11.2×0.35)+(D11.3×0.30)
-Verdict: ≥0.70=HIGH AI AURA|0.40-0.69=MODERATE|0.15-0.39=LOW|<0.15=NATURAL IMPERFECTION
-
-Balas HANYA JSON:
-\`\`\`json
-{
-  "D11": {
-    "score": 0.00,
-    "verdict": "",
-    "key_findings": "",
-    "cross_check_note": ""
-  },
-  "traffic_light": "green"
-}
-\`\`\`
-`;
-
-// ════════════════════════════════════════════════════════════
-// MAIN HANDLER — UVIA v2.0 Public
-// ════════════════════════════════════════════════════════════
-exports.handler = async function(event) {
-  const headers = {
-    'Access-Control-Allow-Origin': '*', // Izinkan semua origin
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Content-Type': 'application/json',
-  };
-
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
-  if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+  const images = [];
+  for (const f of files) {
+    const b64 = await toBase64(f);
+    images.push({ base64: b64, mimeType: f.type, name: f.name });
+  }
 
   try {
-    const body = JSON.parse(event.body || '{}');
-    const { images, config } = body;
+    let prog = 12;
+    const progTimer = setInterval(() => {
+      prog = Math.min(prog + 2, 78);
+      progBar.style.width = prog + '%';
+    }, 700);
 
-    if (!images?.length) {
-      return { statusCode: 400, headers, body: JSON.stringify({ error: 'Tidak ada gambar.' }) };
+    setTimeout(() => {
+      phase1Chips.forEach(id => setChipStatus(id, 'done'));
+      setChipStatus('chip-a2', 'running');
+      lbl.textContent = 'FASE 2 — A2 Human+AI...';
+    }, 4500);
+
+    const res = await fetch('/.netlify/functions/analyze', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ images, config: cfg() })
+    });
+
+    clearInterval(progTimer);
+
+    if (res.status === 401) {
+      // Tidak ada key sama sekali -> tampilkan modal
+      openLoginModal();
+      throw new Error('Sesi tidak ditemukan atau key tidak valid. Silakan masukkan API key Anda.');
     }
 
-    const useCase = config?.useCase || 'Semua';
-    const platform = config?.platform || 'Umum';
-    const safetyAudit = auditSafety();
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
 
-    // ── Strategi pengambilan kunci ──────────────────────
-    const cookieHeader = event.headers.cookie || '';
-    const cookieKey = getKeyFromCookie(cookieHeader);  // dari session (login)
-    const envFallback = process.env.UVIA_API_KEY;       // key publik
+    ['chip-a1','chip-a3','chip-a4','chip-a5','chip-a7','chip-a8','chip-a2'].forEach(id => setChipStatus(id, 'done'));
+    setChipStatus('chip-a6', 'running');
+    lbl.textContent = 'FASE 3 — A6 Synthesis + Cross-Ref...';
+    progBar.style.width = '90%';
 
-    // Fungsi ambil key agent: env spesifik > cookie > env umum
-    function resolveKey(agentName) {
-      const envSpecific = process.env[`UVIA_KEY_${agentName.toUpperCase()}`];
-      if (envSpecific && envSpecific.startsWith('AIza')) return envSpecific;
-      if (cookieKey) return cookieKey; // pakai key user yang login
-      if (envFallback) return envFallback; // fallback publik
-      return null;
-    }
+    // Simulasi delay
+    await new Promise(r => setTimeout(r, 800));
+    setChipStatus('chip-a6', 'done');
+    progBar.style.width = '100%';
 
-    const keys = {
-      A1: resolveKey('origin'),
-      A2: resolveKey('human_ai'),
-      A3: resolveKey('forensic'),
-      A4: resolveKey('safety_ip'),
-      A5: resolveKey('value'),
-      A6: resolveKey('synthesis'),
-      A7: resolveKey('synthid'),
-      A8: resolveKey('uncanny'),
-    };
+    data.results?.forEach(r => {
+      if (r.error) renderError(r.file, r.error);
+      else renderResult(r);
+    });
 
-    // Periksa apakah setidaknya satu agent punya kunci
-    if (!Object.values(keys).some(k => k)) {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: 'Tidak ada API key tersedia. Silakan login atau set UVIA_API_KEY di server.' })
-      };
-    }
-
-    const results = [];
-
-    for (const img of images.slice(0, 3)) {
-      const { base64, mimeType, name } = img;
-
-      try {
-        // FASE 1: 6 agent paralel
-        const [rawA1, rawA3, rawA4, rawA5, rawA7, rawA8] = await Promise.all([
-          callAgent(keys.A1, base64, mimeType, AGENT_ORIGIN(name)),
-          callAgent(keys.A3, base64, mimeType, AGENT_FORENSIC(name)),
-          callAgent(keys.A4, base64, mimeType, AGENT_SAFETY_IP(name)),
-          callAgent(keys.A5, base64, mimeType, AGENT_VALUE(name, platform)),
-          callAgent(keys.A7, base64, mimeType, AGENT_SYNTHID(name)),
-          callAgent(keys.A8, base64, mimeType, AGENT_UNCANNY(name, '')),
-        ]);
-
-        const a1 = extractJSON(rawA1) || {};
-        const a3 = extractJSON(rawA3) || {};
-        const a4 = extractJSON(rawA4) || {};
-        const a5 = extractJSON(rawA5) || {};
-        const a7 = extractJSON(rawA7) || {};
-        const a8 = extractJSON(rawA8) || {};
-
-        const cc = a1.content_class || 'CC-A';
-        const forceTriggerD3 = ['CC-I', 'CC-J', 'CC-K'].includes(cc);
-
-        // FASE 2: Agent 2
-        const rawA2 = await callAgent(keys.A2, base64, mimeType, AGENT_HUMAN_AI(name, cc, forceTriggerD3));
-        const a2 = extractJSON(rawA2) || {};
-
-        // FASE 3: Agent 6
-        const agentResults = { agent1_origin: a1, agent2_human_ai: a2, agent3_forensic: a3, agent4_safety_ip: a4, agent5_value: a5, agent7_synthid: a7, agent8_uncanny: a8 };
-        const rawA6 = await callAgent(keys.A6, base64, mimeType, AGENT_SYNTHESIS(name, useCase, platform, agentResults, safetyAudit), 0.3);
-        const a6 = extractJSON(rawA6) || {};
-
-        results.push({
-          file: name,
-          parsed: {
-            version: '2.0',
-            content_class: cc,
-            context_modifier: a1.context_modifier || [],
-            D1: a1.D1, D2: a2.D2, D3: a2.D3, D4: a3.D4,
-            D5: a4.D5, D6: a5.D6, D7: a5.D7, D8: a4.D8,
-            D9: a6.D9, D10: a7.D10, D11: a8.D11,
-            cross_reference: a6.cross_reference || {},
-            risk_matrix: {
-              D1: a1.traffic_light || 'yellow', D2: a2.D2_traffic || 'yellow',
-              D3: a2.D3_traffic || 'green', D4: a3.traffic_light || 'green',
-              D5: a4.D5_traffic || 'green', D6: a5.D6_traffic || 'yellow',
-              D7: a5.D7_traffic || 'yellow', D8: a4.D8_traffic || 'green',
-              D9: 'green', D10: a7.traffic_light || 'green', D11: a8.traffic_light || 'green',
-            },
-            action_plan: a6.action_plan || {},
-            narrative: a6.narrative || '',
-            safety_audit: safetyAudit,
-            agent_debug: { version: '2.0', agents_used: 8 }
-          }
-        });
-      } catch (imgErr) {
-        results.push({ file: name, error: imgErr.message });
-      }
-    }
-
-    return { statusCode: 200, headers, body: JSON.stringify({ results, system: 'UVIA v2.0' }) };
   } catch (err) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error: ' + err.message }) };
+    showGlobalErr(err.message);
   }
-};
+
+  btn.disabled = false;
+  btn.classList.remove('running-now');
+  spin.style.display = 'none';
+  lbl.textContent = 'ANALISIS 8-AGEN';
+}
+
+function toBase64(file) {
+  return new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ── RENDER ─────────────────────────────────────────────────
+function renderResult(result) {
+  const d = result.parsed;
+  if (!d) { renderError(result.file, 'Output tidak dapat di-parse'); return; }
+
+  const ltMap = { green:'🟢', yellow:'🟡', red:'🔴', black:'⚫' };
+  const barMap = { green:'bg', yellow:'by', red:'br', black:'bk' };
+  const rm = d.risk_matrix || {};
+
+  const dims = [
+    ['D1','D1 Origin',d.D1?.score,d.D1?.verdict],
+    ['D2','D2 Human',d.D2?.score,d.D2?.verdict],
+    ['D3','D3 AI Det.',d.D3?.score,d.D3?.verdict],
+    ['D4','D4 Forensik',d.D4?.score,d.D4?.verdict],
+    ['D5','D5 Safety',null,d.D5?.status],
+    ['D6','D6 Monetize',d.D6?.score,d.D6?.verdict],
+    ['D7','D7 Creative',d.D7?.score,d.D7?.verdict],
+    ['D8','D8 IP Risk',d.D8?.score,d.D8?.verdict],
+    ['D9','D9 UseCase',null,d.D9?.primary],
+    ['D10','D10 SynthID',d.D10?.score,d.D10?.verdict],
+    ['D11','D11 Uncanny',d.D11?.score,d.D11?.verdict],
+  ];
+
+  const agents = [
+    { n:'A1', name:'Origin', dim:'D1', score:d.D1?.score, verdict:d.D1?.verdict, color:'var(--g)' },
+    { n:'A2', name:'Human+AI', dim:'D2+D3', score:d.D2?.score, verdict:d.D2?.verdict, color:'var(--b)' },
+    { n:'A3', name:'Forensik', dim:'D4', score:d.D4?.score, verdict:d.D4?.verdict, color:'var(--y)' },
+    { n:'A4', name:'Safety+IP', dim:'D5+D8', score:null, verdict:d.D5?.status, color:'var(--r)' },
+    { n:'A5', name:'Value', dim:'D6+D7', score:d.D6?.score, verdict:d.D6?.verdict, color:'var(--p)' },
+    { n:'A6', name:'Synthesis', dim:'D9+CR', score:null, verdict:d.D9?.primary, color:'var(--c)' },
+    { n:'A7', name:'SynthID', dim:'D10', score:d.D10?.score, verdict:d.D10?.verdict, color:'#fbbf24' },
+    { n:'A8', name:'Uncanny', dim:'D11', score:d.D11?.score, verdict:d.D11?.verdict, color:'#f472b6' },
+  ];
+
+  const agentCards = agents.map(a => `
+    <div class="ab-item" style="--item-color:${a.color}">
+      <div class="ab-num">${a.n} — ${a.dim}</div>
+      <div class="ab-name">${a.name}</div>
+      <div class="ab-score">${a.score!=null?(a.score*10).toFixed(1):'—'}</div>
+      <div class="ab-verdict">${esc(a.verdict||'')}</div>
+    </div>`).join('');
+
+  const matrixRows = dims.map(([k,lbl,sc,vd]) => {
+    const lt = ltMap[rm[k]] || '⚪';
+    const bc = barMap[rm[k]] || 'bk';
+    const w = sc!=null ? Math.round(sc*100) : 50;
+    return `<div class="m-row">
+      <div class="m-lt">${lt}</div>
+      <div class="m-dim">${lbl}</div>
+      <div class="m-bw"><div class="m-b ${bc}" data-w="${w}"></div></div>
+      <div class="m-vd">${esc(vd||'')}</div>
+    </div>`;
+  }).join('');
+
+  const d5 = d.D5 || {};
+  const st = d5.status || '';
+  let stBadge = st==='CLEAN'?'<span class="badge b-cl">✓ CLEAN</span>'
+    : st==='BLOCKED'?'<span class="badge b-bk">✗ BLOCKED</span>'
+    : st==='HIGH_RISK'?'<span class="badge b-dg">⚠ HIGH RISK</span>'
+    : st?`<span class="badge b-wn">⚠ ${esc(st)}</span>` : '';
+  const sfBadges = (d5.soft_flags||[]).map(f=>`<span class="badge b-wn">${esc(f)}</span>`).join('');
+  const pvBadges = (d5.privacy_flags||[]).map(f=>`<span class="badge b-wn">${esc(f)}</span>`).join('');
+  const discBadge = d.D6?.disclosure_needed?'<span class="badge b-in">⚠ DISCLOSURE</span>':'';
+
+  const cr = d.cross_reference || {};
+  const conflicts = cr.conflicts || [];
+  const conflictHtml = conflicts.length ? `
+    <div class="conflict-box">
+      <div class="conflict-title">⇄ CROSS-REFERENCE CONFLICTS DETECTED</div>
+      <ul class="conflict-list">
+        ${conflicts.map(c=>`<li>⚠ ${esc(c)}</li>`).join('')}
+      </ul>
+    </div>` : '';
+
+  const plan = d.action_plan || {};
+  const acts = [
+    ...(plan.critical||[]).map(a=>({t:a,c:'adc'})),
+    ...(plan.priority||[]).map(a=>({t:a,c:'adp'})),
+    ...(plan.optional||[]).map(a=>({t:a,c:'ado'})),
+  ];
+  const apHtml = acts.length ? `
+    <div class="ap-hd">ACTION PLAN</div>
+    <div class="ap-list">${acts.map(a=>`
+      <div class="ap-item"><div class="ap-dot ${a.c}"></div><div class="ap-txt">${esc(a.t)}</div></div>`).join('')}
+    </div>` : '';
+
+  const d9 = d.D9 || {};
+  const d9Html = d9.primary ? `
+    <div class="d9-box">
+      <div class="m-hd">KLASIFIKASI PENGGUNAAN</div>
+      <div class="d9-pri">◉ ${esc(d9.primary)}</div>
+      <div class="d9-sec">${(d9.secondary||[]).map(s=>`<span class="d9-si">${esc(s)}</span>`).join('')}</div>
+    </div>` : '';
+
+  const card = document.createElement('div');
+  card.className = 'result-card';
+  card.innerHTML = `
+    <div class="r-hdr" onclick="toggle(this)">
+      <div class="r-file">◈ ${esc(result.file)}</div>
+      ${d.content_class?`<div class="r-cc">${esc(d.content_class)}</div>`:''}
+      <div class="r-agents">8 agents</div>
+      <div class="r-chv">▾</div>
+    </div>
+    <div class="r-body">
+      <div class="agent-breakdown">${agentCards}</div>
+      <div class="scores-top">
+        <div class="sc-box"><span class="sc-n cg">${d.D1?.score!=null?(d.D1.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Origin</span></div>
+        <div class="sc-box"><span class="sc-n cb">${d.D2?.score!=null?(d.D2.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Human</span></div>
+        <div class="sc-box"><span class="sc-n cp">${d.D6?.score!=null?(d.D6.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Monetize</span></div>
+        <div class="sc-box"><span class="sc-n co">${d.D7?.score!=null?(d.D7.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Creative</span></div>
+      </div>
+      <div class="badges">${stBadge}${sfBadges}${pvBadges}${discBadge}
+        ${d.D10?.synthid_possible?'<span class="badge b-cr">SynthID Possible</span>':''}
+        ${d.D11?.score >= 0.4?'<span class="badge b-dg">AI Aura</span>':''}
+      </div>
+      ${conflictHtml}
+      <div class="m-hd">RISK MATRIX (D1–D11)</div>
+      <div class="matrix">${matrixRows}</div>
+      ${apHtml?`<div style="margin-bottom:16px">${apHtml}</div>`:''}
+      ${d9Html}
+      ${d.narrative?`
+        <div class="narr">
+          <div class="narr-hd">NARASI FORENSIK — Agent 6 Synthesis</div>
+          <div class="narr-txt">${esc(d.narrative).replace(/\n/g,'<br>')}</div>
+        </div>`:''}
+    </div>`;
+
+  document.getElementById('results').insertBefore(card, document.getElementById('results').firstChild);
+  setTimeout(() => card.querySelectorAll('.m-b[data-w]').forEach(b => b.style.width = b.dataset.w+'%'), 100);
+}
+
+function renderError(filename, msg) {
+  const card = document.createElement('div');
+  card.className='result-card';
+  card.innerHTML=`
+    <div class="r-hdr" onclick="toggle(this)" style="border-left:2px solid var(--r)">
+      <div class="r-file">✗ ${esc(filename)}</div><div class="r-chv">▾</div>
+    </div>
+    <div class="r-body"><div class="err">⚠ ${esc(msg)}</div></div>`;
+  document.getElementById('results').insertBefore(card, document.getElementById('results').firstChild);
+}
+
+function showGlobalErr(msg) {
+  const d = document.createElement('div');
+  d.className='err'; d.style.marginBottom='16px';
+  d.innerHTML='⚠ '+esc(msg);
+  document.getElementById('results').insertBefore(d, document.getElementById('results').firstChild);
+}
+
+function toggle(hdr) {
+  const b = hdr.nextElementSibling;
+  const c = hdr.querySelector('.r-chv');
+  b.classList.toggle('closed');
+  c.classList.toggle('open');
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
