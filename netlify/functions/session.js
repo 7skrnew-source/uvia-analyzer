@@ -1,12 +1,11 @@
-// netlify/functions/session.js
 // Mengelola sesi: login (set cookie) dan logout (hapus cookie)
-// API key DIENKRIPSI lalu disimpan di HTTP-only cookie
-// Browser TIDAK BISA membaca cookie ini lewat JavaScript
+// Mendukung multi-key: bisa set API key berbeda per agent via environment variable,
+// fallback ke key dari session jika tidak ada.
 
 const COOKIE_NAME = 'uvia_session';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'uvia-default-secret-ganti-ini';
 
-// ── Enkripsi sederhana (XOR + base64) — cukup untuk menyembunyikan key di cookie
+// ── Enkripsi sederhana (XOR + base64) ──────────────────────
 function encrypt(text, secret) {
   let result = '';
   for (let i = 0; i < text.length; i++) {
@@ -28,6 +27,7 @@ function decrypt(encoded, secret) {
   }
 }
 
+// ── Parse cookie header ────────────────────────────────────
 function parseCookies(cookieHeader) {
   const cookies = {};
   if (!cookieHeader) return cookies;
@@ -38,14 +38,32 @@ function parseCookies(cookieHeader) {
   return cookies;
 }
 
-// Ekspor helper untuk dipakai function lain
-exports.getKeyFromCookie = function(cookieHeader) {
+// ── Ambil API key dari cookie (key utama) ──────────────────
+function getKeyFromCookie(cookieHeader) {
   const cookies = parseCookies(cookieHeader);
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
   return decrypt(token, SESSION_SECRET);
-};
+}
 
+// ── Ambil API key untuk agent tertentu ─────────────────────
+// Prioritas: environment variable UVIA_KEY_<AGENT> → cookie
+function getAgentKey(agentName, cookieHeader) {
+  const envVar = `UVIA_KEY_${agentName.toUpperCase()}`;
+  const envKey = process.env[envVar];
+  if (envKey && envKey.startsWith('AIza')) {
+    console.log(`[Session] Menggunakan key agent ${agentName} dari env ${envVar}`);
+    return envKey;
+  }
+  console.log(`[Session] Fallback ke key utama untuk agent ${agentName}`);
+  return getKeyFromCookie(cookieHeader);
+}
+
+// Ekspor helper untuk dipakai di function lain
+exports.getKeyFromCookie = getKeyFromCookie;
+exports.getAgentKey = getAgentKey;
+
+// ── Handler utama (login / logout) ─────────────────────────
 exports.handler = async function(event) {
   const headers = {
     'Access-Control-Allow-Origin': event.headers.origin || '*',
@@ -72,19 +90,15 @@ exports.handler = async function(event) {
         };
       }
 
-      // Enkripsi key lalu simpan di cookie
       const encrypted = encrypt(apiKey, SESSION_SECRET);
 
-      // HTTP-only cookie: JS tidak bisa baca, aman dari XSS
-      // SameSite=Strict: tidak dikirim dari website lain (CSRF protection)
-      // Max-Age: 8 jam
       const cookie = [
         `${COOKIE_NAME}=${encrypted}`,
         'HttpOnly',
         'SameSite=Strict',
         'Path=/',
         'Max-Age=28800',
-        // 'Secure', // aktifkan ini di production HTTPS
+        // 'Secure', // aktifkan di production HTTPS
       ].join('; ');
 
       return {
