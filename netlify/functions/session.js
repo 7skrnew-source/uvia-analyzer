@@ -1,3 +1,4 @@
+// netlify/functions/session.js
 // Mengelola sesi: login (set cookie) dan logout (hapus cookie)
 // Mendukung multi-key: bisa set API key berbeda per agent via environment variable,
 // fallback ke key dari session jika tidak ada.
