@@ -1,8 +1,8 @@
 // netlify/functions/analyze.js
 // ═══════════════════════════════════════════════════════════════
 // UVIA MULTI-AGENT SYSTEM v2.0
-// 8 Agent Spesialis — termasuk SynthID (D10) & Uncanny Valley (D11)
-// Multi-key support via env vars, Cross-Reference di Agent 6
+// 8 Agent Spesialis — SynthID (D10) & Uncanny Valley (D11)
+// Akses publik: gunakan UVIA_API_KEY dari env jika tidak ada cookie
 // ═══════════════════════════════════════════════════════════════
 
 const { getKeyFromCookie, getAgentKey } = require('./session');
@@ -34,8 +34,9 @@ function auditSafety() {
   };
 }
 
-// ── Panggil satu agent Gemini dengan gambar + prompt ──────────
+// ── Panggil satu agent Gemini ─────────────────────────────
 async function callAgent(apiKey, base64, mimeType, prompt, temperature = 0.1) {
+  if (!apiKey) throw new Error('API key tidak tersedia');
   const res = await fetch(GEMINI_URL(apiKey), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -57,7 +58,7 @@ async function callAgent(apiKey, base64, mimeType, prompt, temperature = 0.1) {
   return text;
 }
 
-// ── Ekstrak JSON dari teks response ──────────────────────────
+// ── Ekstrak JSON ──────────────────────────────────────────
 function extractJSON(text) {
   const m = text.match(/```json\s*([\s\S]*?)\s*```/);
   if (m) { try { return JSON.parse(m[1]); } catch {} }
@@ -65,11 +66,11 @@ function extractJSON(text) {
   return null;
 }
 
-// ════════════════════════════════════════════════════════════════
-// 8 PROMPT AGENT SPESIALIS
-// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// 8 PROMPT AGENT (tidak berubah dari versi sebelumnya)
+// ════════════════════════════════════════════════════════════
 
-// AGENT 1 — Spesialis: Content Router + Origin Authenticity (D1)
+// AGENT 1 — Origin (D1)
 const AGENT_ORIGIN = (file) => `
 Anda adalah UVIA Agent-1: Spesialis ORIGIN AUTHENTICITY.
 Tugas TUNGGAL: Identifikasi Content Class dan analisis keaslian asal piksel.
@@ -106,7 +107,7 @@ Balas HANYA dalam format JSON:
 \`\`\`
 `;
 
-// AGENT 2 — Spesialis: Human Involvement (D2) + AI Detection (D3) — REVISED
+// AGENT 2 — Human Involvement (D2) + AI Detection (D3) — REVISED
 const AGENT_HUMAN_AI = (file, cc, forceTriggerD3 = false) => `
 Anda adalah UVIA Agent-2: Spesialis HUMAN INVOLVEMENT & AI DETECTION.
 Tugas TUNGGAL: Ukur keterlibatan manusia (D2) dan deteksi tanda AI generatif (D3).
@@ -183,7 +184,7 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// AGENT 3 — Spesialis: Digital Forensics (D4)
+// AGENT 3 — Forensics (D4)
 const AGENT_FORENSIC = (file) => `
 Anda adalah UVIA Agent-3: Spesialis DIGITAL FORENSICS.
 Tugas TUNGGAL: Deteksi manipulasi, splicing, dan deepfake.
@@ -205,7 +206,7 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// AGENT 4 — Spesialis: Content Safety (D5) + IP Risk (D8)
+// AGENT 4 — Safety (D5) + IP (D8)
 const AGENT_SAFETY_IP = (file) => `
 Anda adalah UVIA Agent-4: Spesialis CONTENT SAFETY & IP RISK.
 Tugas TUNGGAL: Periksa keamanan konten dan risiko hak kekayaan intelektual.
@@ -236,7 +237,7 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// AGENT 5 — Spesialis: Monetization (D6) + Creative Value (D7)
+// AGENT 5 — Monetization (D6) + Creative (D7)
 const AGENT_VALUE = (file, platform) => `
 Anda adalah UVIA Agent-5: Spesialis MONETIZATION & CREATIVE VALUE.
 Tugas TUNGGAL: Nilai kelayakan monetisasi dan nilai kreatif konten.
@@ -269,7 +270,7 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// AGENT 6 — Spesialis: Usage Classification (D9) + Narasi + CROSS-REFERENCE
+// AGENT 6 — Synthesis (D9) + Cross-Reference
 const AGENT_SYNTHESIS = (file, useCase, platform, agentResults, safetyConfig) => `
 Anda adalah UVIA Agent-6: Spesialis SYNTHESIS, USAGE CLASSIFICATION & CROSS-REFERENCE.
 Tugas TUNGGAL: Baca hasil SEMUA agent (sekarang 8 agent), deteksi kontradiksi,
@@ -343,7 +344,7 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// AGENT 7 — Spesialis: SynthID & AI Watermark Detection (D10) — BARU
+// AGENT 7 — SynthID (D10)
 const AGENT_SYNTHID = (file) => `
 Anda adalah UVIA Agent-7: Spesialis SYNTHID & AI WATERMARK DETECTION.
 Tugas TUNGGAL: Cari tanda watermark generatif AI, baik visual maupun pola tersembunyi.
@@ -384,7 +385,7 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// AGENT 8 — Spesialis: Uncanny Valley & AI Aura (D11) — BARU
+// AGENT 8 — Uncanny Valley (D11)
 const AGENT_UNCANNY = (file, cc) => `
 Anda adalah UVIA Agent-8: Spesialis UNCANNY VALLEY & AI AURA DETECTION.
 Tugas TUNGGAL: Deteksi "rasa AI" — kesempurnaan yang tidak wajar.
@@ -414,12 +415,12 @@ Balas HANYA JSON:
 \`\`\`
 `;
 
-// ════════════════════════════════════════════════════════════════
-// MAIN HANDLER — UVIA v2.0
-// ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// MAIN HANDLER — UVIA v2.0 Public
+// ════════════════════════════════════════════════════════════
 exports.handler = async function(event) {
   const headers = {
-    'Access-Control-Allow-Origin': event.headers.origin || '*',
+    'Access-Control-Allow-Origin': '*', // Izinkan semua origin
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -428,17 +429,6 @@ exports.handler = async function(event) {
 
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
-
-  // ── Cek sesi dari cookie (key utama untuk fallback) ──
-  const cookieHeader = event.headers.cookie || '';
-  const mainKey = getKeyFromCookie(cookieHeader);
-  if (!mainKey) {
-    return {
-      statusCode: 401,
-      headers,
-      body: JSON.stringify({ error: 'Sesi tidak ditemukan. Silakan login dengan API key terlebih dahulu.' })
-    };
-  }
 
   try {
     const body = JSON.parse(event.body || '{}');
@@ -451,26 +441,48 @@ exports.handler = async function(event) {
     const useCase = config?.useCase || 'Semua';
     const platform = config?.platform || 'Umum';
     const safetyAudit = auditSafety();
-    const results = [];
 
-    // ── Kunci per agent (dari env var atau fallback ke cookie) ──
+    // ── Strategi pengambilan kunci ──────────────────────
+    const cookieHeader = event.headers.cookie || '';
+    const cookieKey = getKeyFromCookie(cookieHeader);  // dari session (login)
+    const envFallback = process.env.UVIA_API_KEY;       // key publik
+
+    // Fungsi ambil key agent: env spesifik > cookie > env umum
+    function resolveKey(agentName) {
+      const envSpecific = process.env[`UVIA_KEY_${agentName.toUpperCase()}`];
+      if (envSpecific && envSpecific.startsWith('AIza')) return envSpecific;
+      if (cookieKey) return cookieKey; // pakai key user yang login
+      if (envFallback) return envFallback; // fallback publik
+      return null;
+    }
+
     const keys = {
-      A1: getAgentKey('origin', cookieHeader),
-      A2: getAgentKey('human_ai', cookieHeader),
-      A3: getAgentKey('forensic', cookieHeader),
-      A4: getAgentKey('safety_ip', cookieHeader),
-      A5: getAgentKey('value', cookieHeader),
-      A6: getAgentKey('synthesis', cookieHeader),
-      A7: getAgentKey('synthid', cookieHeader),
-      A8: getAgentKey('uncanny', cookieHeader),
+      A1: resolveKey('origin'),
+      A2: resolveKey('human_ai'),
+      A3: resolveKey('forensic'),
+      A4: resolveKey('safety_ip'),
+      A5: resolveKey('value'),
+      A6: resolveKey('synthesis'),
+      A7: resolveKey('synthid'),
+      A8: resolveKey('uncanny'),
     };
 
-    // Proses tiap gambar (max 3 sekaligus)
+    // Periksa apakah setidaknya satu agent punya kunci
+    if (!Object.values(keys).some(k => k)) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Tidak ada API key tersedia. Silakan login atau set UVIA_API_KEY di server.' })
+      };
+    }
+
+    const results = [];
+
     for (const img of images.slice(0, 3)) {
       const { base64, mimeType, name } = img;
 
       try {
-        // ── FASE 1: 6 Agent PARALEL ──
+        // FASE 1: 6 agent paralel
         const [rawA1, rawA3, rawA4, rawA5, rawA7, rawA8] = await Promise.all([
           callAgent(keys.A1, base64, mimeType, AGENT_ORIGIN(name)),
           callAgent(keys.A3, base64, mimeType, AGENT_FORENSIC(name)),
@@ -480,7 +492,6 @@ exports.handler = async function(event) {
           callAgent(keys.A8, base64, mimeType, AGENT_UNCANNY(name, '')),
         ]);
 
-        // Parse
         const a1 = extractJSON(rawA1) || {};
         const a3 = extractJSON(rawA3) || {};
         const a4 = extractJSON(rawA4) || {};
@@ -491,101 +502,45 @@ exports.handler = async function(event) {
         const cc = a1.content_class || 'CC-A';
         const forceTriggerD3 = ['CC-I', 'CC-J', 'CC-K'].includes(cc);
 
-        // ── FASE 2: Agent 2 (butuh CC + force trigger) ──
+        // FASE 2: Agent 2
         const rawA2 = await callAgent(keys.A2, base64, mimeType, AGENT_HUMAN_AI(name, cc, forceTriggerD3));
         const a2 = extractJSON(rawA2) || {};
 
-        // ── FASE 3: Agent 6 — Synthesis + Cross-Reference ──
-        const agentResults = {
-          agent1_origin: a1,
-          agent2_human_ai: a2,
-          agent3_forensic: a3,
-          agent4_safety_ip: a4,
-          agent5_value: a5,
-          agent7_synthid: a7,
-          agent8_uncanny: a8,
-        };
+        // FASE 3: Agent 6
+        const agentResults = { agent1_origin: a1, agent2_human_ai: a2, agent3_forensic: a3, agent4_safety_ip: a4, agent5_value: a5, agent7_synthid: a7, agent8_uncanny: a8 };
         const rawA6 = await callAgent(keys.A6, base64, mimeType, AGENT_SYNTHESIS(name, useCase, platform, agentResults, safetyAudit), 0.3);
         const a6 = extractJSON(rawA6) || {};
 
-        // ── Gabungkan ──
-        const result = {
+        results.push({
           file: name,
-          version: '2.0',
-          content_class: cc,
-          context_modifier: a1.context_modifier || [],
-          D1: a1.D1 || {},
-          D2: a2.D2 || {},
-          D3: a2.D3 || {},
-          D4: a3.D4 || {},
-          D5: a4.D5 || {},
-          D6: a5.D6 || {},
-          D7: a5.D7 || {},
-          D8: a4.D8 || {},
-          D9: a6.D9 || {},
-          D10: a7.D10 || {},
-          D11: a8.D11 || {},
-          cross_reference: a6.cross_reference || {},
-          risk_matrix: {
-            D1: a1.traffic_light || 'yellow',
-            D2: a2.D2_traffic || 'yellow',
-            D3: a2.D3_traffic || 'green',
-            D4: a3.traffic_light || 'green',
-            D5: a4.D5_traffic || 'green',
-            D6: a5.D6_traffic || 'yellow',
-            D7: a5.D7_traffic || 'yellow',
-            D8: a4.D8_traffic || 'green',
-            D9: 'green',
-            D10: a7.traffic_light || 'green',
-            D11: a8.traffic_light || 'green',
-          },
-          action_plan: a6.action_plan || {},
-          narrative: a6.narrative || '',
-          safety_audit: safetyAudit,
-          agent_debug: {
+          parsed: {
             version: '2.0',
-            phases: 3,
-            agents_used: 8,
-            parallel_in_phase1: 6,
-            dimensions: 'D1-D11',
-            new_dimensions: ['D10_SynthID', 'D11_UncannyValley'],
-            cross_reference: true,
-            multi_key: {
-              origin: !!process.env.UVIA_KEY_ORIGIN,
-              human_ai: !!process.env.UVIA_KEY_HUMAN_AI,
-              forensic: !!process.env.UVIA_KEY_FORENSIC,
-              safety_ip: !!process.env.UVIA_KEY_SAFETY_IP,
-              value: !!process.env.UVIA_KEY_VALUE,
-              synthesis: !!process.env.UVIA_KEY_SYNTHESIS,
-              synthid: !!process.env.UVIA_KEY_SYNTHID,
-              uncanny: !!process.env.UVIA_KEY_UNCANNY,
-            }
+            content_class: cc,
+            context_modifier: a1.context_modifier || [],
+            D1: a1.D1, D2: a2.D2, D3: a2.D3, D4: a3.D4,
+            D5: a4.D5, D6: a5.D6, D7: a5.D7, D8: a4.D8,
+            D9: a6.D9, D10: a7.D10, D11: a8.D11,
+            cross_reference: a6.cross_reference || {},
+            risk_matrix: {
+              D1: a1.traffic_light || 'yellow', D2: a2.D2_traffic || 'yellow',
+              D3: a2.D3_traffic || 'green', D4: a3.traffic_light || 'green',
+              D5: a4.D5_traffic || 'green', D6: a5.D6_traffic || 'yellow',
+              D7: a5.D7_traffic || 'yellow', D8: a4.D8_traffic || 'green',
+              D9: 'green', D10: a7.traffic_light || 'green', D11: a8.traffic_light || 'green',
+            },
+            action_plan: a6.action_plan || {},
+            narrative: a6.narrative || '',
+            safety_audit: safetyAudit,
+            agent_debug: { version: '2.0', agents_used: 8 }
           }
-        };
-
-        results.push({ file: name, parsed: result });
-
+        });
       } catch (imgErr) {
         results.push({ file: name, error: imgErr.message });
       }
     }
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        results,
-        system: 'UVIA v2.0',
-        dimensions: 'D1-D11',
-        safety_audit: safetyAudit,
-      })
-    };
-
+    return { statusCode: 200, headers, body: JSON.stringify({ results, system: 'UVIA v2.0' }) };
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: 'Server error: ' + err.message })
-    };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Server error: ' + err.message }) };
   }
 };
