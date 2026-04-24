@@ -1,3 +1,34 @@
+[build]
+  command = "echo 'No build step required'"
+  publish = "."
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+# ═══════════════════════════════════════════════════════
+# ENVIRONMENT VARIABLES UNTUK UVIA v2.0
+# ═══════════════════════════════════════════════════════
+# Simpan API key di dashboard Netlify, BUKAN di sini!
+# 
+# Variabel yang dibutuhkan (minimal 1):
+#   UVIA_API_KEY         → API key utama untuk semua agent
+#
+# Variabel opsional untuk MULTI-KEY (production):
+#   UVIA_KEY_ORIGIN      → Agent 1 (D1)
+#   UVIA_KEY_HUMAN_AI    → Agent 2 (D2-D3)
+#   UVIA_KEY_FORENSIC    → Agent 3 (D4)
+#   UVIA_KEY_SAFETY_IP   → Agent 4 (D5,D8)
+#   UVIA_KEY_VALUE       → Agent 5 (D6-D7)
+#   UVIA_KEY_SYNTHESIS   → Agent 6 (D9)
+#   UVIA_KEY_SYNTHID     → Agent 7 (D10)
+#   UVIA_KEY_UNCANNY     → Agent 8 (D11)
+#
+# Aturan pemakaian:
+#   • Jika UVIA_KEY_ORIGIN tidak diset → fallback ke UVIA_API_KEY
+#   • Setiap variabel bisa berasal dari proyek Google Cloud berbeda
+# ═══════════════════════════════════════════════════════
+
+# [context.production.environment]
+#   TIDAK MENYIMPAN API KEY DI SINI!
+#   Gunakan dashboard Netlify: Site settings → Environment variables
