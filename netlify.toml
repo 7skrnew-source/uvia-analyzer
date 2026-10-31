@@ -11,8 +11,9 @@
 # ═══════════════════════════════════════════════════════
 # Simpan API key di dashboard Netlify, BUKAN di sini!
 # 
-# Variabel yang dibutuhkan (minimal 1):
-#   UVIA_API_KEY         → API key utama untuk semua agent
+# Variabel:
+#   (opsional) UVIA_API_KEY → API key Google utama. Jika tidak diset,
+#   analisis otomatis memakai Netlify AI Gateway (tanpa API key).
 #
 # Variabel opsional untuk MULTI-KEY (production):
 #   UVIA_KEY_ORIGIN      → Agent 1 (D1)
