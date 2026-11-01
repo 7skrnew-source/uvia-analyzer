@@ -1,29 +1,45 @@
 // netlify/functions/lib/meta.mjs
 // Pembaca metadata gambar — bukti yang jauh lebih kuat daripada tebakan visual.
-// Mendukung JPEG, PNG, WebP. Membaca: EXIF (kamera), XMP/IPTC DigitalSourceType,
-// C2PA/Content Credentials (hanya KEBERADAAN dan pernyataan teksnya; tanda tangan TIDAK diverifikasi),
+// Mendukung JPEG, PNG, WebP, HEIC/HEIF, AVIF. Membaca: EXIF (kamera), XMP/IPTC DigitalSourceType,
+// C2PA/Content Credentials (hanya KEBERADAAN dan isinya; tanda tangan TIDAK diverifikasi),
 // dan jejak alat pembuat gambar AI (Stable Diffusion/ComfyUI/InvokeAI/NovelAI, dst).
+//
+// Nama alat AI HANYA dicari di kolom alat/perangkat lunak (CreatorTool, Software, softwareAgent,
+// claim_generator), dengan batas kata. Teks bebas seperti judul, deskripsi, dan keyword
+// tidak pernah dipakai: "Foto scattata dalle montagne" atau "Una imagen del mar" bukan bukti AI.
 //
 // Folder lib/ sengaja tidak berisi index.mjs agar Netlify tidak menjadikannya endpoint.
 
 import { inflateSync } from 'node:zlib';
+import { detectFormat, bmffBoxes, bmffItems, isXmpItem } from '../../../shared/meta-ranges.mjs';
 
 const MAX_TEXT = 4000;
+const MAX_SPARSE = 16 * 1024 * 1024;
 
-// Nama alat AI yang cukup khas untuk dicari di semua teks metadata
-const AI_TOOLS_DISTINCT = [
-  'midjourney', 'dall-e', 'dall·e', 'dalle', 'stable diffusion', 'firefly', 'imagen', 'chatgpt', 'openai',
-  'ideogram', 'comfyui', 'automatic1111', 'novelai', 'invokeai', 'nano banana', 'made with google ai',
-  'bing image creator', 'microsoft designer', 'leonardo.ai',
+const AI_TOOLS = [
+  'midjourney', 'dall-e', 'dall·e', 'dalle', 'stable diffusion', 'stability ai', 'dreamstudio', 'sdxl',
+  'firefly', 'imagen', 'gemini', 'nano banana', 'chatgpt', 'openai', 'gpt-4o', 'gpt-image',
+  'ideogram', 'comfyui', 'automatic1111', 'novelai', 'invokeai', 'flux', 'sora', 'runway', 'krea',
+  'leonardo.ai', 'leonardo', 'bing image creator', 'microsoft designer', 'playground ai', 'craiyon', 'grok',
 ];
-// Nama pendek: hanya dicari di kolom perangkat lunak/alat pembuat (rawan salah cocok di data biner)
-const AI_TOOLS_SHORT = ['gemini', 'flux', 'sora', 'runway', 'krea', 'sdxl', 'leonardo'];
 
 // Alat penyunting biasa (netral, hanya dicatat)
 const EDITORS = ['photoshop', 'lightroom', 'gimp', 'snapseed', 'affinity', 'capture one', 'pixelmator', 'canva', 'picsart', 'facetune'];
 
-const printable = buf => (buf.toString('latin1').match(/[\x20-\x7e]{4,}/g) || []).join('\n');
 const clip = s => (s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) : s);
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const TOOL_RE = AI_TOOLS.map(name => [name, new RegExp(`(?:^|[^\\p{L}\\p{N}])${escRe(name)}(?:[^\\p{L}\\p{N}]|$)`, 'iu')]);
+
+function findTools(values) {
+  const found = new Set();
+  for (const v of values) {
+    if (!v) continue;
+    for (const [name, re] of TOOL_RE) if (re.test(v)) found.add(name);
+  }
+  // "leonardo" dan "leonardo.ai" adalah alat yang sama
+  if (found.has('leonardo.ai')) found.delete('leonardo');
+  return [...found];
+}
 
 // ── TIFF/EXIF ──────────────────────────────────────────────
 function parseTiff(t) {
@@ -47,6 +63,7 @@ function parseTiff(t) {
         if (tag == null || type == null || count == null) break;
         entries.push({ tag, type, count, pos: p + 8 });
       }
+      entries.next = u32(off + 2 + n * 12);
       return entries;
     };
     const ascii = e => {
@@ -57,18 +74,22 @@ function parseTiff(t) {
     };
     const find = (list, tag) => list.find(e => e.tag === tag);
 
-    const ifd0Off = u32(4);
-    const ifd0 = readIfd(ifd0Off);
+    const ifd0 = readIfd(u32(4));
     out.present = ifd0.length > 0;
     out.make = ascii(find(ifd0, 0x010f));
     out.model = ascii(find(ifd0, 0x0110));
     out.software = ascii(find(ifd0, 0x0131));
+    // IFD1 = thumbnail bawaan kamera/ponsel (jarang ditambahkan saat memalsukan EXIF)
+    out.hasThumbnail = !!(ifd0.next && readIfd(ifd0.next).length);
 
     const exifPtr = find(ifd0, 0x8769);
     if (exifPtr) {
       const ex = readIfd(u32(exifPtr.pos));
       out.dateTimeOriginal = ascii(find(ex, 0x9003));
-      out.hasExposure = !!(find(ex, 0x829a) || find(ex, 0x829d) || find(ex, 0x8827));
+      const fields = { exposureTime: 0x829a, fNumber: 0x829d, iso: 0x8827, focalLength: 0x920a };
+      out.exposureFields = Object.values(fields).filter(tag => find(ex, tag)).length;
+      out.hasExposure = out.exposureFields > 0;
+      out.hasMakerNote = !!find(ex, 0x927c);
       out.lens = ascii(find(ex, 0xa434));
       const uc = find(ex, 0x9286); // UserComment — dipakai WebUI Stable Diffusion untuk JPEG
       if (uc && uc.count > 8 && uc.count < 8000) {
@@ -90,6 +111,8 @@ function parseTiff(t) {
 
 // ── Pengumpul per format ───────────────────────────────────
 function walkJpeg(buf, acc) {
+  const extXmp = new Map(); // GUID → [{ offset, data }]
+  const jumbf = new Map(); // instance (En) → [{ seq, data }]
   let i = 2;
   while (i + 4 <= buf.length) {
     if (buf[i] !== 0xff) break;
@@ -102,16 +125,37 @@ function walkJpeg(buf, acc) {
     const data = buf.subarray(i + 4, i + 2 + len);
     if (m === 0xe1) {
       if (data.toString('latin1', 0, 6) === 'Exif\0\0') acc.tiff.push(data.subarray(6));
-      else if (data.toString('latin1', 0, 28).startsWith('http://ns.adobe.com/xap/1.0/')) {
-        acc.xmp.push(data.subarray(29).toString('utf8'));
+      else if (data.toString('latin1', 0, 29) === 'http://ns.adobe.com/xap/1.0/\0') acc.xmp.push(data.subarray(29).toString('utf8'));
+      else if (data.toString('latin1', 0, 35) === 'http://ns.adobe.com/xmp/extension/\0' && data.length > 75) {
+        // Extended XMP: GUID(32) + panjang total(4) + offset(4) + potongan data
+        const guid = data.toString('latin1', 35, 67);
+        if (!extXmp.has(guid)) extXmp.set(guid, []);
+        extXmp.get(guid).push({ offset: data.readUInt32BE(71), data: data.subarray(75) });
       }
-    } else if (m === 0xeb) {
-      const head = data.toString('latin1', 0, 64);
-      if (head.includes('jumb') || head.includes('c2pa')) acc.c2pa.push(data);
+    } else if (m === 0xeb && data.length > 16 && data.toString('latin1', 0, 2) === 'JP') {
+      // C2PA/JUMBF bisa dipecah ke banyak segmen APP11; segmen lanjutan mengulang header box
+      const en = data.readUInt16BE(2), seq = data.readUInt32BE(4);
+      if (!jumbf.has(en)) jumbf.set(en, []);
+      jumbf.get(en).push({ seq, data: data.subarray(8) });
     } else if (m === 0xfe) {
       acc.text.push({ key: 'comment', value: clip(data.toString('latin1')) });
     }
     i += 2 + len;
+  }
+
+  for (const parts of extXmp.values()) {
+    parts.sort((a, b) => a.offset - b.offset);
+    acc.xmp.push(Buffer.concat(parts.map(p => p.data)).toString('utf8'));
+  }
+  for (const parts of jumbf.values()) {
+    parts.sort((a, b) => a.seq - b.seq);
+    const joined = Buffer.concat(parts.map((p, n) => {
+      if (n === 0) return p.data;
+      const lbox = p.data.length >= 4 ? p.data.readUInt32BE(0) : 0;
+      return p.data.subarray(lbox === 1 ? 16 : 8);
+    }));
+    const head = joined.toString('latin1', 0, 64);
+    if (head.includes('jumb') || head.includes('c2pa')) acc.c2pa.push(joined);
   }
 }
 
@@ -167,17 +211,93 @@ function walkWebp(buf, acc) {
   }
 }
 
-// ── Analisis ───────────────────────────────────────────────
+// HEIC/HEIF/AVIF: EXIF dan XMP disimpan sebagai "item" yang lokasinya dicatat di kotak iloc
+function walkBmff(buf, acc) {
+  for (const box of bmffBoxes(buf)) {
+    if (box.type === 'uuid') {
+      const data = buf.subarray(box.dataStart + 16, box.end);
+      const head = data.toString('latin1', 0, 64);
+      if (head.includes('jumb') || head.includes('c2pa')) acc.c2pa.push(data);
+    }
+    if (box.type !== 'meta') continue;
+    for (const it of bmffItems(buf, box)) {
+      const data = Buffer.concat(it.extents.filter(([o, l]) => o + l <= buf.length).map(([o, l]) => buf.subarray(o, o + l)));
+      if (!data.length) continue;
+      if (it.type === 'Exif' && data.length > 8) {
+        const off = data.readUInt32BE(0);
+        let tiff = data.subarray(4 + off);
+        if (tiff.toString('latin1', 0, 2) !== 'II' && tiff.toString('latin1', 0, 2) !== 'MM') {
+          const k = data.indexOf('Exif\0\0', 0, 'latin1');
+          tiff = k >= 0 ? data.subarray(k + 6) : tiff;
+        }
+        acc.tiff.push(tiff);
+      } else if (isXmpItem(it)) {
+        acc.xmp.push(data.toString('utf8'));
+      }
+    }
+  }
+}
+
+// ── C2PA (CBOR) ────────────────────────────────────────────
+// Baca string CBOR (major type 3) di posisi p
+function cborText(buf, p) {
+  if (p >= buf.length) return null;
+  const h = buf[p];
+  if (h >> 5 !== 3) return null;
+  const info = h & 31;
+  let len, s = p + 1;
+  if (info < 24) len = info;
+  else if (info === 24) { len = buf[s]; s += 1; }
+  else if (info === 25) { len = buf.readUInt16BE(s); s += 2; }
+  else return null;
+  if (len > 300 || s + len > buf.length) return null;
+  return buf.toString('utf8', s, s + len);
+}
+const cborKey = key => Buffer.concat([Buffer.from([0x60 + key.length]), Buffer.from(key)]);
+
+// Nilai untuk kunci tertentu: string langsung, atau field "name" di dalam map/array berikutnya
+function cborValues(buf, key) {
+  const out = [];
+  const k = cborKey(key), name = cborKey('name');
+  let p = buf.indexOf(k);
+  while (p >= 0 && out.length < 40) {
+    const v = p + k.length;
+    const direct = cborText(buf, v);
+    if (direct != null) out.push(direct);
+    else {
+      const n = buf.subarray(v, v + 200).indexOf(name);
+      if (n >= 0) { const s = cborText(buf, v + n + name.length); if (s != null) out.push(s); }
+    }
+    p = buf.indexOf(k, p + 1);
+  }
+  return out;
+}
+
+// ── XMP ────────────────────────────────────────────────────
+// Nilai field XMP, baik bentuk atribut (ns:Field="…") maupun elemen (<ns:Field>…</ns:Field>)
+function xmpValues(xmp, field) {
+  const f = escRe(field);
+  const out = [];
+  for (const m of xmp.matchAll(new RegExp(`${f}\\s*=\\s*"([^"]{1,200})"`, 'gi'))) out.push(m[1]);
+  for (const m of xmp.matchAll(new RegExp(`<${f}>([\\s\\S]{1,400}?)</${f}>`, 'gi'))) {
+    out.push(m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  }
+  return out.filter(Boolean);
+}
+
 const dsValues = text => [...text.matchAll(/digitalsourcetype\/([a-z]+)/gi)].map(m => m[1].toLowerCase());
 
-function findTools(text, includeShort) {
-  const low = text.toLowerCase();
-  const found = new Set();
-  for (const name of AI_TOOLS_DISTINCT) if (low.includes(name)) found.add(name);
-  if (includeShort) {
-    for (const name of AI_TOOLS_SHORT) if (new RegExp(`(^|[^a-z])${name}([^a-z]|$)`).test(low)) found.add(name);
+// Bangun ulang file dari potongan metadata yang dikirim browser (offset asli dipertahankan)
+export function sparseBuffer(size, parts) {
+  if (!Number.isInteger(size) || size <= 0 || size > MAX_SPARSE || !Array.isArray(parts)) return null;
+  const buf = Buffer.alloc(size);
+  for (const part of parts.slice(0, 2000)) {
+    if (!Array.isArray(part) || !Number.isInteger(part[0]) || typeof part[1] !== 'string') continue;
+    const data = Buffer.from(part[1], 'base64');
+    if (part[0] < 0 || part[0] + data.length > size) continue;
+    data.copy(buf, part[0]);
   }
-  return [...found];
+  return buf;
 }
 
 export function parseMetadata(input) {
@@ -186,22 +306,27 @@ export function parseMetadata(input) {
     format: null,
     exif: { present: false },
     xmp: { present: false, creatorTool: null },
-    c2pa: { present: false },
+    c2pa: { present: false, signatureVerified: false },
     sourceTypes: [],
     generatorTags: [],
     aiToolNames: [],
+    aiToolsCreator: [],
+    aiToolsHistory: [],
     editors: [],
     declaredAI: false,
     declaredEdited: false,
     declaredCamera: false,
     cameraLike: false,
+    cameraDetailed: false,
   };
   const acc = { tiff: [], xmp: [], c2pa: [], text: [] };
 
   try {
-    if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8) { r.format = 'jpeg'; walkJpeg(buf, acc); }
-    else if (buf.length > 16 && buf.toString('latin1', 1, 4) === 'PNG') { r.format = 'png'; walkPng(buf, acc); }
-    else if (buf.length > 16 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') { r.format = 'webp'; walkWebp(buf, acc); }
+    r.format = detectFormat(buf);
+    if (r.format === 'jpeg') walkJpeg(buf, acc);
+    else if (r.format === 'png') walkPng(buf, acc);
+    else if (r.format === 'webp') walkWebp(buf, acc);
+    else if (r.format === 'heic' || r.format === 'avif') walkBmff(buf, acc);
   } catch { /* lanjutkan dengan yang terkumpul */ }
 
   // EXIF
@@ -212,25 +337,33 @@ export function parseMetadata(input) {
 
   // XMP
   const xmpText = acc.xmp.join('\n');
+  const creatorTools = xmpValues(xmpText, 'xmp:CreatorTool');
+  const softwareAgents = xmpValues(xmpText, 'stEvt:softwareAgent');
+  const credits = xmpValues(xmpText, 'photoshop:Credit');
   if (xmpText) {
     r.xmp.present = true;
-    const ct = xmpText.match(/xmp:creatortool(?:="|>)([^"<]{1,120})/i);
-    r.xmp.creatorTool = ct ? ct[1].trim() : null;
+    r.xmp.creatorTool = creatorTools[0] || null;
   }
 
   // C2PA / Content Credentials
-  let c2paText = '';
+  const c2paBuf = Buffer.concat(acc.c2pa);
+  const claimGenerators = [];
+  const c2paAgents = [];
   if (acc.c2pa.length) {
     r.c2pa.present = true;
-    c2paText = acc.c2pa.map(printable).join('\n');
+    claimGenerators.push(...cborValues(c2paBuf, 'claim_generator'), ...cborValues(c2paBuf, 'claim_generator_info'));
+    c2paAgents.push(...cborValues(c2paBuf, 'softwareAgent'));
   }
 
   // Jenis sumber (IPTC DigitalSourceType) dari XMP dan C2PA
-  const types = new Set([...dsValues(xmpText), ...dsValues(c2paText)]);
+  const types = new Set([...dsValues(xmpText), ...dsValues(c2paBuf.toString('latin1'))]);
   r.sourceTypes = [...types];
   r.declaredAI = types.has('trainedalgorithmicmedia');
   r.declaredEdited = types.has('compositewithtrainedalgorithmicmedia') || types.has('compositesynthetic') || types.has('algorithmicallyenhanced');
-  r.declaredCamera = types.has('digitalcapture') || types.has('computationalcapture');
+  r.declaredCamera = types.has('digitalcapture') || types.has('computationalcapture') || types.has('negativefilm') || types.has('positivefilm');
+  // Google: "Made with Google AI" (dibuat) / "Edited with Google AI" (diedit) di kolom Credit
+  if (credits.some(c => /\bedited with (google )?ai\b/i.test(c))) r.declaredEdited = true;
+  else if (credits.some(c => /\bmade with google ai\b/i.test(c))) r.declaredAI = true;
 
   // Jejak alat pembuat AI
   const tags = new Set();
@@ -246,17 +379,29 @@ export function parseMetadata(input) {
   }
   r.generatorTags = [...tags];
 
-  const toolText = [r.exif.software, r.xmp.creatorTool, ...acc.text.filter(t => /^(software|source|generator)$/i.test(t.key)).map(t => t.value)].filter(Boolean).join('\n');
-  r.aiToolNames = [...new Set([...findTools(toolText, true), ...findTools(c2paText, false), ...findTools(xmpText, false)])];
+  // Alat pembuat file (CreatorTool/Software/claim_generator) vs alat di riwayat edit (softwareAgent)
+  const pngTools = acc.text.filter(t => /^(software|source|generator)$/i.test(t.key)).map(t => t.value);
+  const creatorText = [r.exif.software, ...creatorTools, ...claimGenerators, ...pngTools];
+  const historyText = [...softwareAgents, ...c2paAgents];
+  r.aiToolsCreator = findTools(creatorText);
+  r.aiToolsHistory = findTools(historyText).filter(t => !r.aiToolsCreator.includes(t));
+  r.aiToolNames = [...r.aiToolsCreator, ...r.aiToolsHistory];
+  r.toolStrings = [...new Set([...creatorText, ...historyText].filter(Boolean).map(s => s.slice(0, 80)))].slice(0, 6);
 
-  const editorText = `${r.exif.software || ''} ${r.xmp.creatorTool || ''}`.toLowerCase();
+  const editorText = [...creatorText, ...historyText].filter(Boolean).join(' ').toLowerCase();
   r.editors = EDITORS.filter(e => editorText.includes(e));
 
+  // Data kamera. Merek/model/waktu mudah ditambahkan dengan exiftool; MakerNote/thumbnail bawaan
+  // dan data eksposur lengkap lebih jarang ikut dipalsukan, jadi dianggap bukti lebih kuat.
   r.cameraLike = !!(
     r.exif.present && r.exif.make && r.exif.model &&
     (r.exif.hasExposure || r.exif.dateTimeOriginal) &&
     !r.aiToolNames.length && !r.generatorTags.length && !r.declaredAI
   );
+  r.cameraDetailed = r.cameraLike &&
+    (r.exif.hasMakerNote || r.exif.hasThumbnail) &&
+    (r.exif.exposureFields || 0) >= 3 &&
+    (r.format === 'jpeg' || r.format === 'heic'); // kamera tidak menghasilkan PNG/WebP
 
   return r;
 }
@@ -266,6 +411,7 @@ export function summarizeMetadata(m) {
   return {
     format: m.format,
     camera: m.exif.make || m.exif.model ? [m.exif.make, m.exif.model].filter(Boolean).join(' ') : null,
+    camera_detail: m.cameraDetailed ? 'lengkap' : m.cameraLike ? 'minim' : null,
     software: m.exif.software || m.xmp.creatorTool || null,
     taken_at: m.exif.dateTimeOriginal || null,
     has_exposure_data: !!m.exif.hasExposure,
@@ -273,6 +419,7 @@ export function summarizeMetadata(m) {
     has_exif: !!m.exif.present,
     has_xmp: !!m.xmp.present,
     has_c2pa: !!m.c2pa.present,
+    c2pa_signature_verified: false,
     source_types: m.sourceTypes,
     ai_tools: m.aiToolNames,
     generator_tags: m.generatorTags,
