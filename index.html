@@ -67,7 +67,12 @@ body::before{
   padding:13px 16px;outline:none;border-radius:2px;transition:border-color .2s
 }
 .login-input:focus{border-color:var(--g)}
-.login-input::placeholder{color:var(--b1)}
+.login-input::placeholder{color:var(--b2)}
+.login-btn.secondary{background:transparent;border:1px solid var(--b2);color:var(--txt);margin-top:8px;display:none}
+.login-btn.secondary:hover:not(:disabled){border-color:var(--r);color:var(--r);background:transparent;box-shadow:none;transform:none}
+.login-btn.secondary.show{display:block}
+.upload-note{display:none;margin-bottom:14px;padding:10px 14px;background:rgba(245,197,66,.08);border:1px solid rgba(245,197,66,.25);border-radius:2px;font-family:var(--mono);font-size:10px;color:var(--y);line-height:1.6}
+.upload-note.show{display:block}
 .login-note{
   font-family:var(--mono);font-size:9px;color:var(--txt);
   margin-top:6px;line-height:1.6
@@ -96,6 +101,37 @@ body::before{
 }
 .lock-icon{color:var(--g);font-size:14px;flex-shrink:0;margin-top:1px}
 .login-security p{font-family:var(--mono);font-size:9px;color:var(--txt);line-height:1.6}
+
+/* ── KESIMPULAN (ramah awam) ── */
+.verdict{border:1px solid var(--vc);background:color-mix(in srgb,var(--vc) 8%,var(--bg));border-radius:2px;padding:20px;margin-bottom:16px}
+.vd-top{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.vd-ico{font-size:30px;line-height:1;width:44px;text-align:center;color:var(--vc)}
+.vd-label{font-family:var(--head);font-size:34px;letter-spacing:.04em;color:var(--vc);line-height:1.05}
+.vd-conf{font-family:var(--mono);font-size:10px;color:var(--txt);margin-top:4px}
+.vd-exp{font-size:14px;color:var(--txt2);line-height:1.6}
+.sect-hd{font-family:var(--mono);font-size:9px;color:var(--g);letter-spacing:.25em;text-transform:uppercase;margin:22px 0 8px}
+.reasons,.caveats,.steps{list-style:none;display:flex;flex-direction:column;gap:4px}
+.rs{padding:9px 12px;background:var(--bg);border:1px solid var(--b1);border-left:3px solid var(--b2);border-radius:2px;font-size:13px;color:var(--txt2);line-height:1.55}
+.rs-tag{display:block;font-family:var(--mono);font-size:8px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:3px;color:var(--txt)}
+.rs-ai{border-left-color:var(--r)}.rs-real{border-left-color:var(--g)}.rs-edit{border-left-color:var(--p)}
+.meta-grid{display:grid;grid-template-columns:minmax(120px,200px) 1fr;gap:1px;background:var(--b1);border:1px solid var(--b1);border-radius:2px;overflow:hidden}
+.mt-k,.mt-v{background:var(--bg);padding:8px 12px;font-size:12px}
+.mt-k{font-family:var(--mono);font-size:10px;color:var(--txt)}
+.mt-v{color:var(--txt2);overflow-wrap:anywhere}
+.caveats li{padding:8px 12px;background:rgba(245,197,66,.05);border:1px solid rgba(245,197,66,.18);border-radius:2px;font-size:12px;color:var(--txt2);line-height:1.55}
+.steps li{padding:8px 12px;background:var(--bg);border:1px solid var(--b1);border-radius:2px;font-size:12px;color:var(--txt2);line-height:1.5}
+.steps a{color:var(--b);text-decoration:none}.steps a:hover{text-decoration:underline}
+details.tech{margin-top:24px;border-top:1px solid var(--b1);padding-top:14px}
+details.tech>summary,details.how>summary{cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--txt);letter-spacing:.1em;list-style:none;padding:6px 0}
+details.tech>summary:hover,details.how>summary:hover{color:var(--g)}
+details.tech>summary::before,details.how>summary::before{content:'▸';display:inline-block;margin-right:8px;transition:transform .15s}
+details.tech[open]>summary::before,details.how[open]>summary::before{transform:rotate(90deg)}
+details.tech>summary::-webkit-details-marker,details.how>summary::-webkit-details-marker{display:none}
+details.tech[open]>summary{margin-bottom:14px;color:var(--g)}
+details.how p{font-size:11px;color:var(--txt);line-height:1.65;margin-top:8px}
+.tech-note{font-family:var(--mono);font-size:9px;color:var(--txt);margin:-12px 0 18px;line-height:1.6}
+.mode-hint{font-family:var(--mono);font-size:9px;color:var(--txt);margin-top:8px;line-height:1.6}
+.narr{margin-top:0;margin-bottom:6px}
 
 /* ── NAV ── */
 nav{
@@ -148,7 +184,7 @@ nav{
 /* ── SIDEBAR ── */
 .sidebar{
   border-right:1px solid var(--b1);padding:20px;
-  position:sticky;top:52px;height:calc(100vh - 52px);
+  position:sticky;top:52px;height:calc(100vh - 52px);align-self:start;
   overflow-y:auto;background:var(--s1)
 }
 .sidebar::-webkit-scrollbar{width:3px}
@@ -357,7 +393,10 @@ nav{
 
 /* RESPONSIVE */
 @media(max-width:768px){
-  .layout{grid-template-columns:1fr}
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .main{min-width:0}
+  .meta-grid{grid-template-columns:1fr}
+  .vd-label{font-size:28px}
   .sidebar{position:static;height:auto;border-right:none;border-bottom:1px solid var(--b1)}
   .main{padding:20px 16px}
   .scores-top{grid-template-columns:repeat(2,1fr)}
@@ -370,24 +409,25 @@ nav{
 <body>
 
 <!-- MODAL LOGIN OPSIONAL -->
-<div id="login-modal">
-  <div class="modal-box">
-    <span class="modal-close" onclick="closeLoginModal()">✕</span>
+<div id="login-modal" onclick="if(event.target===this)closeLoginModal()">
+  <div class="modal-box" style="max-width:440px">
+    <span class="modal-close" onclick="closeLoginModal()" title="Tutup">✕</span>
     <div class="login-logo" style="font-size:28px;">UVIA<span> Key</span></div>
-    <div class="login-ver">PERSONAL API KEY</div>
+    <div class="login-ver">API KEY PRIBADI · OPSIONAL</div>
     <p class="login-desc" style="font-size:12px; margin-bottom:16px;">
-      Masukkan Gemini API key Anda sendiri jika kuota publik habis.
+      Aplikasi sudah bisa dipakai tanpa key. Masukkan Gemini API key Anda sendiri hanya jika kuota publik habis atau Anda ingin memakai kuota sendiri.
     </p>
-    <label class="login-label">Gemini API Key</label>
-    <input class="login-input" type="password" id="modal-key-input" placeholder="AIzaSy..." autocomplete="off">
+    <label class="login-label" for="modal-key-input">Gemini API Key</label>
+    <input class="login-input" type="password" id="modal-key-input" placeholder="AIzaSy..." autocomplete="off" spellcheck="false">
     <div class="login-note">
-      Dapatkan key gratis di <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>
+      Dapatkan key gratis di <a href="https://aistudio.google.com" target="_blank" rel="noopener">aistudio.google.com</a>
     </div>
     <button class="login-btn" id="modal-login-btn" onclick="doModalLogin()">SIMPAN KEY</button>
+    <button class="login-btn secondary" id="modal-remove-btn" onclick="removePersonalKey()">HAPUS KEY PRIBADI</button>
     <div class="login-err" id="modal-login-err"></div>
     <div class="login-security" style="margin-top:12px;">
       <span class="lock-icon">🔒</span>
-      <p>Key disimpan aman di HTTP-only cookie.</p>
+      <p>Key dikirim ke server sekali, dienkripsi, lalu disimpan di HTTP-only cookie (8 jam). JavaScript browser tidak bisa membacanya.</p>
     </div>
   </div>
 </div>
@@ -400,7 +440,7 @@ nav{
       <div class="session-dot"></div>
       <span id="session-label">Public Key</span>
     </div>
-    <button class="logout-btn" id="login-btn-nav" onclick="openLoginModal()">GANTI KEY</button>
+    <button class="logout-btn" id="login-btn-nav" onclick="openLoginModal()">KEY PRIBADI</button>
   </div>
 </nav>
 
@@ -420,6 +460,16 @@ nav{
 <div class="layout z1">
 
   <aside class="sidebar">
+    <div class="s-section">
+      <div class="s-label">Mode Pemeriksaan</div>
+      <div class="sel-group" id="mode-group">
+        <div class="sel-item active" data-val="cepat" onclick="pick(this,'mode-group');syncMode()"><div class="sel-dot"></div><span class="sel-txt">Cepat — apakah ini buatan AI?</span></div>
+        <div class="sel-item" data-val="lengkap" onclick="pick(this,'mode-group');syncMode()"><div class="sel-dot"></div><span class="sel-txt">Lengkap — plus keamanan, hak cipta &amp; nilai jual</span></div>
+      </div>
+      <div class="mode-hint" id="mode-hint">5 pemeriksaan. Lebih hemat kuota.</div>
+    </div>
+
+    <div id="adv-opts" style="display:none">
     <div class="s-section">
       <div class="s-label">Tujuan Analisis</div>
       <div class="sel-group" id="uc-group">
@@ -445,43 +495,35 @@ nav{
       </div>
     </div>
 
+    </div>
+
     <div class="s-section">
-      <div class="s-label">Arsitektur Agent</div>
-      <div class="arch-info">
-        <div class="arch-title">8 AGEN PARALEL</div>
-        <div class="arch-agent"><div class="agent-n">A1</div><div class="agent-info">Origin Auth<span class="agent-dims">D1 — Sensor & Optik</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A2</div><div class="agent-info">Human + AI<span class="agent-dims">D2 + D3</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A3</div><div class="agent-info">Forensik<span class="agent-dims">D4 — Manipulasi</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A4</div><div class="agent-info">Safety + IP<span class="agent-dims">D5 + D8</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A5</div><div class="agent-info">Nilai<span class="agent-dims">D6 + D7</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A6</div><div class="agent-info">Synthesis<span class="agent-dims">D9 + Cross-Ref</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A7</div><div class="agent-info">SynthID<span class="agent-dims">D10 — Watermark AI</span></div></div>
-        <div class="arch-agent"><div class="agent-n">A8</div><div class="agent-info">Uncanny<span class="agent-dims">D11 — AI Aura</span></div></div>
-        <div class="parallel-badge">⚡ A1, A3, A4, A5, A7, A8 — paralel</div>
-        <div class="crossref-badge">⇄ Cross-Reference Detection</div>
-      </div>
+      <details class="how">
+        <summary>Bagaimana cara kerjanya?</summary>
+        <p>Kami memeriksa dua hal: <b>data di dalam file</b> (kamera, Content Credentials, jejak program AI) dan <b>tampilan gambarnya</b> lewat beberapa pemeriksa AI.</p>
+        <p>Bukti dari dalam file lebih kuat daripada kesan visual. Tampilan saja tidak pernah cukup untuk menyatakan sebuah foto "pasti AI" atau "pasti asli".</p>
+        <p>Foto dikirim ke layanan Google Gemini untuk dianalisis; situs ini tidak menyimpannya.</p>
+      </details>
     </div>
   </aside>
 
   <main class="main">
     <div class="upload-zone" id="drop-zone"
-      onclick="document.getElementById('file-input').click()"
-      ondragover="e=>{e.preventDefault();document.getElementById('drop-zone').classList.add('drag')}"
-      ondragleave="document.getElementById('drop-zone').classList.remove('drag')"
-      ondrop="e=>{e.preventDefault();document.getElementById('drop-zone').classList.remove('drag');addFiles(e.dataTransfer.files)}">
+      onclick="document.getElementById('file-input').click()">
       <div class="up-icon">⬆</div>
-      <div class="up-title">Upload Gambar</div>
+      <div class="up-title">Unggah foto yang ingin dicek</div>
       <div class="up-sub">Drag & drop atau klik — max 3 gambar sekaligus</div>
       <div class="up-fmts"><span class="fmt">JPG</span><span class="fmt">PNG</span><span class="fmt">WEBP</span><span class="fmt">Max 5MB</span></div>
     </div>
-    <input type="file" id="file-input" multiple accept="image/*" onchange="addFiles(this.files)">
+    <input type="file" id="file-input" multiple accept="image/*" onchange="addFiles(this.files); this.value=''">
 
+    <div class="upload-note" id="upload-note"></div>
     <div class="prev-grid" id="prev-grid"></div>
 
     <div class="action-bar" id="action-bar">
       <button class="btn-run" id="btn-run" onclick="runAnalysis()">
         <div class="spin" id="spin"></div>
-        <span id="btn-lbl">ANALISIS 8-AGEN</span>
+        <span id="btn-lbl">PERIKSA FOTO</span>
       </button>
       <button class="btn-clr" onclick="clearAll()">HAPUS</button>
       <div class="fcnt" id="fcnt"></div>
@@ -494,8 +536,8 @@ nav{
     <div id="results">
       <div class="empty" id="empty-state">
         <div class="empty-ico">◈</div>
-        <div class="empty-t">Belum Ada Hasil</div>
-        <div class="empty-s">Upload gambar lalu klik Analisis 8-Agen</div>
+        <div class="empty-t">Foto ini buatan AI atau bukan?</div>
+        <div class="empty-s">Unggah foto lalu klik Periksa Foto. Hasilnya berupa perkiraan, bukan bukti pasti.</div>
       </div>
     </div>
   </main>
@@ -510,16 +552,41 @@ function pick(el, gid) {
   document.querySelectorAll(`#${gid} .sel-item`).forEach(i => i.classList.remove('active'));
   el.classList.add('active');
 }
+function isFull() {
+  return document.querySelector('#mode-group .sel-item.active')?.dataset.val === 'lengkap';
+}
+function syncMode() {
+  const full = isFull();
+  document.getElementById('adv-opts').style.display = full ? 'block' : 'none';
+  document.getElementById('mode-hint').textContent = full
+    ? '8 pemeriksaan: ditambah keamanan konten, hak cipta, dan nilai jual.'
+    : '5 pemeriksaan. Lebih hemat kuota.';
+}
 function cfg() {
   return {
+    full: isFull(),
     useCase: document.querySelector('#uc-group .sel-item.active')?.dataset.val || 'Umum',
     platform: document.querySelector('#pl-group .sel-item.active')?.dataset.val || 'Umum',
   };
 }
 
 // ── MODAL LOGIN ────────────────────────────────────────────
+let hasPersonalKey = false;
+
+function setKeyState(active) {
+  hasPersonalKey = active;
+  document.getElementById('session-label').textContent = active ? 'Your Key' : 'Public Key';
+  document.getElementById('login-btn-nav').textContent = active ? 'GANTI KEY' : 'KEY PRIBADI';
+  document.getElementById('modal-remove-btn').classList.toggle('show', active);
+}
+function showModalErr(msg) {
+  const errEl = document.getElementById('modal-login-err');
+  errEl.textContent = msg;
+  errEl.classList.add('show');
+}
 function openLoginModal() {
   document.getElementById('login-modal').classList.add('show');
+  document.getElementById('modal-key-input').focus();
 }
 function closeLoginModal() {
   document.getElementById('login-modal').classList.remove('show');
@@ -527,13 +594,16 @@ function closeLoginModal() {
   document.getElementById('modal-key-input').value = '';
 }
 async function doModalLogin() {
-  const key = document.getElementById('modal-key-input').value.trim();
-  const errEl = document.getElementById('modal-login-err');
+  const input = document.getElementById('modal-key-input');
+  const btn = document.getElementById('modal-login-btn');
+  const key = input.value.trim();
+  document.getElementById('modal-login-err').classList.remove('show');
   if (!key.startsWith('AIza')) {
-    errEl.textContent = 'Format key tidak valid. Harus dimulai dengan "AIza..."';
-    errEl.classList.add('show');
+    showModalErr('Format key tidak valid. Harus dimulai dengan "AIza..."');
     return;
   }
+  btn.disabled = true;
+  btn.textContent = 'MEMERIKSA KEY...';
   try {
     const res = await fetch('/.netlify/functions/session', {
       method: 'POST',
@@ -541,42 +611,77 @@ async function doModalLogin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey: key })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Gagal menyimpan key');
-    // Sukses
-    document.getElementById('session-label').textContent = 'Your Key';
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Gagal menyimpan key (${res.status})`);
+    setKeyState(true);
     closeLoginModal();
   } catch(e) {
-    errEl.textContent = e.message;
-    errEl.classList.add('show');
+    showModalErr(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'SIMPAN KEY';
   }
 }
+async function removePersonalKey() {
+  try {
+    const res = await fetch('/.netlify/functions/session', { method: 'DELETE', credentials: 'include' });
+    if (!res.ok) throw new Error(`Gagal menghapus key (${res.status})`);
+    setKeyState(false);
+    closeLoginModal();
+  } catch(e) {
+    showModalErr(e.message);
+  }
+}
+document.getElementById('modal-key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doModalLogin();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLoginModal();
+});
 
 // ── CEK SESSION AWAL ────────────────────────────────────────
 async function checkSession() {
   try {
     const res = await fetch('/.netlify/functions/session', { credentials: 'include' });
     const data = await res.json();
-    if (data.active) {
-      document.getElementById('session-label').textContent = 'Your Key';
-    }
+    setKeyState(!!data.active);
   } catch(e) {}
 }
 checkSession();
 
 // ── FILES ──────────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, e => {
+  e.preventDefault();
+  dropZone.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+}));
+dropZone.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
 function addFiles(fl) {
+  const skipped = [];
   Array.from(fl).forEach(f => {
-    if (!f.type.startsWith('image/') || f.size > 5*1024*1024) return;
+    if (!f.type.startsWith('image/')) { skipped.push(`${f.name}: bukan gambar`); return; }
+    if (f.size > 5*1024*1024) { skipped.push(`${f.name}: lebih dari 5MB`); return; }
     if (files.find(x => x.name === f.name && x.size === f.size)) return;
-    if (files.length >= 3) return;
+    if (files.length >= 3) { skipped.push(`${f.name}: maksimal 3 gambar`); return; }
     files.push(f);
   });
+  const note = document.getElementById('upload-note');
+  note.innerHTML = skipped.map(esc).join('<br>');
+  note.classList.toggle('show', skipped.length > 0);
   renderPrev();
 }
 
 function removeFile(i) { files.splice(i,1); renderPrev(); }
-function clearAll() { files=[]; renderPrev(); }
+function clearAll() {
+  files=[];
+  document.getElementById('upload-note').classList.remove('show');
+  renderPrev();
+}
 
 function renderPrev() {
   const grid = document.getElementById('prev-grid');
@@ -589,7 +694,7 @@ function renderPrev() {
     const url = URL.createObjectURL(f);
     const d = document.createElement('div');
     d.className='prev-item'; d.id=`pi-${i}`;
-    d.innerHTML=`<img src="${url}"><button class="prev-rm" onclick="removeFile(${i})">✕</button><div class="prev-name">${f.name}</div>`;
+    d.innerHTML=`<img src="${url}" onload="window.URL.revokeObjectURL(this.src)"><button class="prev-rm" onclick="removeFile(${i})">✕</button><div class="prev-name">${esc(f.name)}</div>`;
     grid.appendChild(d);
   });
 }
@@ -635,29 +740,37 @@ async function runAnalysis() {
   resetChips();
   document.getElementById('empty-state')?.remove();
 
-  const phase1Chips = ['chip-a1','chip-a3','chip-a4','chip-a5','chip-a7','chip-a8'];
+  // Mode cepat: 5 agent inti paralel; mode lengkap: 7 agent paralel. Lalu A6 menjelaskan hasilnya.
+  const full = isFull();
+  const phase1Chips = full
+    ? ['chip-a1','chip-a2','chip-a3','chip-a4','chip-a5','chip-a7','chip-a8']
+    : ['chip-a1','chip-a2','chip-a3','chip-a7','chip-a8'];
+  ['chip-a4','chip-a5'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = full ? '' : 'none'; });
   phase1Chips.forEach(id => setChipStatus(id, 'running'));
-  lbl.textContent = 'FASE 1 — 6 AGENT PARALEL...';
+  lbl.textContent = 'MEMERIKSA FOTO...';
   progBar.style.width = '12%';
 
-  const images = [];
-  for (const f of files) {
-    const b64 = await toBase64(f);
-    images.push({ base64: b64, mimeType: 'image/jpeg', name: f.name });
-  }
+  let progTimer = null;
+  let phaseTimer = null;
 
   try {
+    const images = [];
+    for (const f of files) {
+      images.push({ ...(await prepareImage(f)), name: f.name });
+    }
+
     let prog = 12;
-    const progTimer = setInterval(() => {
+    progTimer = setInterval(() => {
       prog = Math.min(prog + 2, 78);
       progBar.style.width = prog + '%';
     }, 700);
 
-    setTimeout(() => {
+    // Perkiraan waktu saja (server hanya mengirim satu respons di akhir)
+    phaseTimer = setTimeout(() => {
       phase1Chips.forEach(id => setChipStatus(id, 'done'));
-      setChipStatus('chip-a2', 'running');
-      lbl.textContent = 'FASE 2 — A2 Human+AI...';
-    }, 4500);
+      setChipStatus('chip-a6', 'running');
+      lbl.textContent = 'MENYUSUN PENJELASAN...';
+    }, 6000);
 
     const res = await fetch('/.netlify/functions/analyze', {
       method: 'POST',
@@ -666,28 +779,19 @@ async function runAnalysis() {
       body: JSON.stringify({ images, config: cfg() })
     });
 
-    clearInterval(progTimer);
-
     let data;
     try { data = await res.json(); }
     catch { throw new Error(`Server error (${res.status}). Coba lagi dengan gambar lebih sedikit.`); }
 
     if (res.status === 401 || res.status === 429) {
-      // Tidak ada key / kuota publik habis -> tampilkan modal
+      // Tidak ada key / kuota publik habis -> tawarkan key pribadi
       openLoginModal();
       throw new Error(data.error || 'API key tidak tersedia. Silakan masukkan API key Anda.');
     }
 
     if (data.error) throw new Error(data.error);
 
-    ['chip-a1','chip-a3','chip-a4','chip-a5','chip-a7','chip-a8','chip-a2'].forEach(id => setChipStatus(id, 'done'));
-    setChipStatus('chip-a6', 'running');
-    lbl.textContent = 'FASE 3 — A6 Synthesis + Cross-Ref...';
-    progBar.style.width = '90%';
-
-    // Simulasi delay
-    await new Promise(r => setTimeout(r, 800));
-    setChipStatus('chip-a6', 'done');
+    [...phase1Chips, 'chip-a6'].forEach(id => setChipStatus(id, 'done'));
     progBar.style.width = '100%';
 
     data.results?.forEach(r => {
@@ -696,17 +800,50 @@ async function runAnalysis() {
     });
 
   } catch (err) {
+    resetChips();
     showGlobalErr(err.message);
+  } finally {
+    clearInterval(progTimer);
+    clearTimeout(phaseTimer);
   }
 
   btn.disabled = false;
   btn.classList.remove('running-now');
   spin.style.display = 'none';
-  lbl.textContent = 'ANALISIS 8-AGEN';
+  lbl.textContent = 'PERIKSA FOTO';
 }
 
-// Perkecil gambar sebelum dikirim agar request tidak melebihi batas ukuran function
-function toBase64(file, maxDim = 1600, quality = 0.85) {
+// Batas body function Netlify ±6MB; base64 menambah ±33%. Dengan 3 gambar, file asli ≤1.3MB aman
+// dikirim apa adanya (menjaga noise sensor, artefak JPEG, dan jejak watermark yang dicari agent).
+// File lebih besar dikecilkan (2048px, kualitas tinggi).
+const ORIGINAL_MAX_BYTES = 1.3 * 1024 * 1024;
+const SEND_AS_IS = ['image/jpeg', 'image/png', 'image/webp'];
+
+function readAsBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error(`Gambar "${file.name}" tidak bisa dibaca.`));
+    r.readAsDataURL(file);
+  });
+}
+
+// Metadata (EXIF, XMP, Content Credentials) hilang saat gambar digambar ulang di canvas.
+// Karena itu, untuk file besar kami kirim juga potongan awal file ASLI (tempat metadata berada).
+const META_HEAD_BYTES = 256 * 1024;
+
+async function prepareImage(file) {
+  if (file.size <= ORIGINAL_MAX_BYTES && SEND_AS_IS.includes(file.type)) {
+    return { base64: await readAsBase64(file), mimeType: file.type };
+  }
+  const [base64, meta] = await Promise.all([
+    toBase64(file, 2048, 0.92),
+    readAsBase64(file.slice(0, META_HEAD_BYTES)).catch(() => null),
+  ]);
+  return { base64, mimeType: 'image/jpeg', downscaled: true, meta: meta || undefined };
+}
+
+function toBase64(file, maxDim = 2048, quality = 0.92) {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -715,144 +852,186 @@ function toBase64(file, maxDim = 1600, quality = 0.85) {
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * scale);
       c.height = Math.round(img.height * scale);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; // PNG/WEBP transparan jangan jadi hitam saat dikonversi ke JPEG
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
       res(c.toDataURL('image/jpeg', quality).split(',')[1]);
     };
-    img.onerror = rej;
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error(`Gambar "${file.name}" tidak bisa dibaca.`)); };
     img.src = url;
   });
 }
 
 // ── RENDER ─────────────────────────────────────────────────
-function renderResult(result) {
-  const d = result.parsed;
-  if (!d) { renderError(result.file, 'Output tidak dapat di-parse'); return; }
+const LEVEL_UI = {
+  ai:         { c: 'var(--r)',   i: '🤖' },
+  likely_ai:  { c: 'var(--o)',   i: '⚠' },
+  edited:     { c: 'var(--p)',   i: '✎' },
+  uncertain:  { c: 'var(--y)',   i: '?' },
+  no_signs:   { c: 'var(--b)',   i: '◌' },
+  likely_real:{ c: 'var(--g)',   i: '✓' },
+  unknown:    { c: 'var(--txt)', i: '…' },
+};
+const DIR_LABEL = { ai: 'Mengarah ke AI', real: 'Mengarah ke foto asli', edit: 'Tanda diedit', netral: 'Catatan' };
 
-  const ltMap = { green:'🟢', yellow:'🟡', red:'🔴', black:'⚫' };
-  const barMap = { green:'bg', yellow:'by', red:'br', black:'bk' };
+function safeUrl(u) { return /^https:\/\//.test(u || '') ? u : null; }
+
+function verdictHtml(d) {
+  const v = d.verdict;
+  if (!v) return '';
+  const ui = LEVEL_UI[v.level] || LEVEL_UI.unknown;
+
+  const reasons = (v.reasons || []).map(r => `
+    <li class="rs rs-${esc(r.dir)}"><span class="rs-tag">${esc(DIR_LABEL[r.dir] || 'Catatan')}${r.strength ? ' · ' + esc(r.strength) : ''}</span>${esc(r.text)}</li>`).join('');
+
+  const m = d.metadata || {};
+  const st = m.source_types || [];
+  const aiDecl = st.includes('trainedalgorithmicmedia') ? 'Ya — file menyatakan dibuat oleh AI'
+    : st.includes('compositewithtrainedalgorithmicmedia') ? 'File menyatakan sebagian diubah AI'
+    : st.includes('digitalcapture') ? 'File menyatakan hasil tangkapan kamera' : 'Tidak ada';
+  const tools = [...(m.ai_tools || []), ...(m.generator_tags || [])];
+  const rows = [
+    ['Kamera', m.camera || 'Tidak tercatat'],
+    ['Aplikasi/software', m.software || 'Tidak tercatat'],
+    ['Waktu pengambilan', m.taken_at || 'Tidak tercatat'],
+    ['Content Credentials (C2PA)', m.has_c2pa ? 'Ada (belum diverifikasi di sini)' : 'Tidak ada'],
+    ['Pernyataan AI di dalam file', aiDecl],
+    ['Jejak program AI', tools.length ? tools.join(', ') : 'Tidak ditemukan'],
+    ['Data lokasi (GPS)', m.has_gps ? 'Ada — hapus sebelum dibagikan' : 'Tidak ada'],
+  ].map(([k, val]) => `<div class="mt-k">${esc(k)}</div><div class="mt-v">${esc(val)}</div>`).join('');
+
+  const caveats = (v.caveats || []).map(c => `<li>${esc(c)}</li>`).join('');
+  const steps = (v.next_steps || []).map(n => {
+    const u = safeUrl(n.url);
+    return `<li>${u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(n.text)}</a>` : esc(n.text)}</li>`;
+  }).join('');
+
+  return `
+    <div class="verdict" style="--vc:${ui.c}">
+      <div class="vd-top">
+        <div class="vd-ico">${ui.i}</div>
+        <div>
+          <div class="vd-label">${esc(v.label)}</div>
+          <div class="vd-conf">Keyakinan: ${esc(v.confidence || 'rendah')}${v.edited_with_ai ? ' · kemungkinan ada bagian yang diedit AI' : ''}</div>
+        </div>
+      </div>
+      <div class="vd-exp">${esc(v.explanation)}</div>
+    </div>
+    ${d.narrative ? `<div class="narr"><div class="narr-hd">PENJELASAN</div><div class="narr-txt">${esc(d.narrative).replace(/\n/g, '<br>')}</div></div>` : ''}
+    <div class="sect-hd">Kenapa kami menyimpulkan ini</div>
+    <ul class="reasons">${reasons || '<li class="rs rs-netral">Tidak ada bukti yang cukup.</li>'}</ul>
+    <div class="sect-hd">Data di dalam file</div>
+    <div class="meta-grid">${rows}</div>
+    <div class="sect-hd">Yang perlu diingat</div>
+    <ul class="caveats">${caveats}</ul>
+    <div class="sect-hd">Ingin lebih yakin?</div>
+    <ul class="steps">${steps}</ul>`;
+}
+
+function technicalHtml(d) {
+  const ltMap = { green:'🟢', yellow:'🟡', red:'🔴', black:'⚫', gray:'⚪' };
+  const barMap = { green:'bg', yellow:'by', red:'br', black:'bk', gray:'bk' };
   const rm = d.risk_matrix || {};
 
+  // [kunci, label (tinggi = ...), skor, keterangan]
   const dims = [
-    ['D1','D1 Origin',d.D1?.score,d.D1?.verdict],
-    ['D2','D2 Human',d.D2?.score,d.D2?.verdict],
-    ['D3','D3 AI Det.',d.D3?.score,d.D3?.verdict],
-    ['D4','D4 Forensik',d.D4?.score,d.D4?.verdict],
-    ['D5','D5 Safety',null,d.D5?.status],
-    ['D6','D6 Monetize',d.D6?.score,d.D6?.verdict],
-    ['D7','D7 Creative',d.D7?.score,d.D7?.verdict],
-    ['D8','D8 IP Risk',d.D8?.score,d.D8?.verdict],
-    ['D9','D9 UseCase',null,d.D9?.primary],
-    ['D10','D10 SynthID',d.D10?.score,d.D10?.verdict],
-    ['D11','D11 Uncanny',d.D11?.score,d.D11?.verdict],
-  ];
-
-  const agents = [
-    { n:'A1', name:'Origin', dim:'D1', score:d.D1?.score, verdict:d.D1?.verdict, color:'var(--g)' },
-    { n:'A2', name:'Human+AI', dim:'D2+D3', score:d.D2?.score, verdict:d.D2?.verdict, color:'var(--b)' },
-    { n:'A3', name:'Forensik', dim:'D4', score:d.D4?.score, verdict:d.D4?.verdict, color:'var(--y)' },
-    { n:'A4', name:'Safety+IP', dim:'D5+D8', score:null, verdict:d.D5?.status, color:'var(--r)' },
-    { n:'A5', name:'Value', dim:'D6+D7', score:d.D6?.score, verdict:d.D6?.verdict, color:'var(--p)' },
-    { n:'A6', name:'Synthesis', dim:'D9+CR', score:null, verdict:d.D9?.primary, color:'var(--c)' },
-    { n:'A7', name:'SynthID', dim:'D10', score:d.D10?.score, verdict:d.D10?.verdict, color:'#fbbf24' },
-    { n:'A8', name:'Uncanny', dim:'D11', score:d.D11?.score, verdict:d.D11?.verdict, color:'#f472b6' },
-  ];
-
-  const agentCards = agents.map(a => `
-    <div class="ab-item" style="--item-color:${a.color}">
-      <div class="ab-num">${a.n} — ${a.dim}</div>
-      <div class="ab-name">${a.name}</div>
-      <div class="ab-score">${a.score!=null?(a.score*10).toFixed(1):'—'}</div>
-      <div class="ab-verdict">${esc(a.verdict||'')}</div>
-    </div>`).join('');
+    ['D1','Keaslian kamera (↑ baik)',d.D1?.score,d.D1?.verdict],
+    ['D2','Peran manusia (↑ baik)',d.D2?.score,d.D2?.verdict],
+    ['D3','Ciri hasil AI (↑ risiko)',d.D3?.score,d.D3?.verdict],
+    ['D4','Tanda manipulasi (↑ risiko)',d.D4?.score,d.D4?.verdict],
+    ['D5','Keamanan konten',null,d.D5?.status],
+    ['D6','Nilai jual (↑ baik)',d.D6?.score,d.D6?.verdict],
+    ['D7','Kualitas kreatif (↑ baik)',d.D7?.score,d.D7?.verdict],
+    ['D8','Bebas risiko hak cipta (↑ baik)',d.D8?.score,d.D8?.verdict],
+    ['D9','Cocok untuk',null,d.D9?.primary],
+    ['D10','Watermark AI (↑ risiko)',d.D10?.score,d.D10?.verdict],
+    ['D11','Kesan "terlalu sempurna" (↑ risiko)',d.D11?.score,d.D11?.verdict],
+  ].filter(([k]) => d[k] !== undefined);
 
   const matrixRows = dims.map(([k,lbl,sc,vd]) => {
-    const lt = ltMap[rm[k]] || '⚪';
-    const bc = barMap[rm[k]] || 'bk';
-    const w = sc!=null ? Math.round(sc*100) : 50;
+    const w = sc != null ? Math.round(sc * 100) : 0;
     return `<div class="m-row">
-      <div class="m-lt">${lt}</div>
-      <div class="m-dim">${lbl}</div>
-      <div class="m-bw"><div class="m-b ${bc}" data-w="${w}"></div></div>
-      <div class="m-vd">${esc(vd||'')}</div>
+      <div class="m-lt">${ltMap[rm[k]] || '⚪'}</div>
+      <div class="m-dim">${esc(lbl)}</div>
+      <div class="m-bw"><div class="m-b ${barMap[rm[k]] || 'bk'}" data-w="${w}"></div></div>
+      <div class="m-vd">${esc(vd || '')}</div>
     </div>`;
   }).join('');
 
   const d5 = d.D5 || {};
   const st = d5.status || '';
-  let stBadge = st==='CLEAN'?'<span class="badge b-cl">✓ CLEAN</span>'
-    : st==='BLOCKED'?'<span class="badge b-bk">✗ BLOCKED</span>'
-    : st==='HIGH_RISK'?'<span class="badge b-dg">⚠ HIGH RISK</span>'
-    : st?`<span class="badge b-wn">⚠ ${esc(st)}</span>` : '';
-  const sfBadges = (d5.soft_flags||[]).map(f=>`<span class="badge b-wn">${esc(f)}</span>`).join('');
-  const pvBadges = (d5.privacy_flags||[]).map(f=>`<span class="badge b-wn">${esc(f)}</span>`).join('');
-  const discBadge = d.D6?.disclosure_needed?'<span class="badge b-in">⚠ DISCLOSURE</span>':'';
+  const stBadge = st === 'CLEAN' ? '<span class="badge b-cl">✓ AMAN</span>'
+    : st === 'BLOCKED' ? '<span class="badge b-bk">✗ DIBLOKIR</span>'
+    : st === 'HIGH_RISK' ? '<span class="badge b-dg">⚠ RISIKO TINGGI</span>'
+    : st ? `<span class="badge b-wn">⚠ ${esc(st)}</span>` : '';
+  const flags = [...(d5.soft_flags || []), ...(d5.privacy_flags || [])].map(f => `<span class="badge b-wn">${esc(f)}</span>`).join('');
+  const disc = d.D6?.disclosure_needed ? '<span class="badge b-in">⚠ PERLU LABEL AI</span>' : '';
 
-  const cr = d.cross_reference || {};
-  const conflicts = cr.conflicts || [];
+  const conflicts = d.cross_reference?.conflicts || [];
   const conflictHtml = conflicts.length ? `
     <div class="conflict-box">
-      <div class="conflict-title">⇄ CROSS-REFERENCE CONFLICTS DETECTED</div>
-      <ul class="conflict-list">
-        ${conflicts.map(c=>`<li>⚠ ${esc(c)}</li>`).join('')}
-      </ul>
+      <div class="conflict-title">⇄ HASIL PEMERIKSAAN YANG SALING BERTENTANGAN</div>
+      <ul class="conflict-list">${conflicts.map(c => `<li>⚠ ${esc(c)}</li>`).join('')}</ul>
     </div>` : '';
 
   const plan = d.action_plan || {};
   const acts = [
-    ...(plan.critical||[]).map(a=>({t:a,c:'adc'})),
-    ...(plan.priority||[]).map(a=>({t:a,c:'adp'})),
-    ...(plan.optional||[]).map(a=>({t:a,c:'ado'})),
+    ...(plan.critical || []).map(a => ({ t: a, c: 'adc' })),
+    ...(plan.priority || []).map(a => ({ t: a, c: 'adp' })),
+    ...(plan.optional || []).map(a => ({ t: a, c: 'ado' })),
   ];
   const apHtml = acts.length ? `
-    <div class="ap-hd">ACTION PLAN</div>
-    <div class="ap-list">${acts.map(a=>`
-      <div class="ap-item"><div class="ap-dot ${a.c}"></div><div class="ap-txt">${esc(a.t)}</div></div>`).join('')}
-    </div>` : '';
+    <div class="ap-hd">LANGKAH YANG DISARANKAN</div>
+    <div class="ap-list">${acts.map(a => `<div class="ap-item"><div class="ap-dot ${a.c}"></div><div class="ap-txt">${esc(a.t)}</div></div>`).join('')}</div>` : '';
 
   const d9 = d.D9 || {};
   const d9Html = d9.primary ? `
     <div class="d9-box">
-      <div class="m-hd">KLASIFIKASI PENGGUNAAN</div>
+      <div class="m-hd">PALING COCOK UNTUK</div>
       <div class="d9-pri">◉ ${esc(d9.primary)}</div>
-      <div class="d9-sec">${(d9.secondary||[]).map(s=>`<span class="d9-si">${esc(s)}</span>`).join('')}</div>
+      <div class="d9-sec">${(d9.secondary || []).map(x => `<span class="d9-si">${esc(x)}</span>`).join('')}</div>
     </div>` : '';
 
+  return `
+    <div class="badges">${stBadge}${flags}${disc}
+      ${d.D10?.synthid_possible ? '<span class="badge b-cr">Kemungkinan watermark AI</span>' : ''}
+    </div>
+    ${conflictHtml}
+    <div class="m-hd">RINCIAN PEMERIKSAAN</div>
+    <div class="matrix">${matrixRows}</div>
+    <div class="tech-note">Angka bersifat perkiraan otomatis. ↑ baik = makin tinggi makin baik; ↑ risiko = makin tinggi makin mencurigakan.</div>
+    ${apHtml ? `<div style="margin-bottom:16px">${apHtml}</div>` : ''}
+    ${d9Html}`;
+}
+
+function renderResult(result) {
+  const d = result.parsed;
+  if (!d) { renderError(result.file, 'Output tidak dapat di-parse'); return; }
+
+  const ui = LEVEL_UI[d.verdict?.level] || LEVEL_UI.unknown;
   const card = document.createElement('div');
   card.className = 'result-card';
   card.innerHTML = `
-    <div class="r-hdr" onclick="toggle(this)">
+    <div class="r-hdr" onclick="toggle(this)" style="border-left:3px solid ${ui.c}">
       <div class="r-file">◈ ${esc(result.file)}</div>
-      ${d.content_class?`<div class="r-cc">${esc(d.content_class)}</div>`:''}
-      <div class="r-agents">8 agents</div>
-      <div class="r-chv">▾</div>
+      ${d.verdict ? `<div class="r-cc" style="color:${ui.c};border-color:${ui.c}">${esc(d.verdict.label)}</div>` : ''}
+      <div class="r-agents">${d.mode === 'lengkap' ? 'mode lengkap' : 'mode cepat'}</div>
+      <div class="r-chv open">▾</div>
     </div>
     <div class="r-body">
-      <div class="agent-breakdown">${agentCards}</div>
-      <div class="scores-top">
-        <div class="sc-box"><span class="sc-n cg">${d.D1?.score!=null?(d.D1.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Origin</span></div>
-        <div class="sc-box"><span class="sc-n cb">${d.D2?.score!=null?(d.D2.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Human</span></div>
-        <div class="sc-box"><span class="sc-n cp">${d.D6?.score!=null?(d.D6.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Monetize</span></div>
-        <div class="sc-box"><span class="sc-n co">${d.D7?.score!=null?(d.D7.score*10).toFixed(1):'N/A'}</span><span class="sc-l">Creative</span></div>
-      </div>
-      <div class="badges">${stBadge}${sfBadges}${pvBadges}${discBadge}
-        ${d.D10?.synthid_possible?'<span class="badge b-cr">SynthID Possible</span>':''}
-        ${d.D11?.score >= 0.4?'<span class="badge b-dg">AI Aura</span>':''}
-      </div>
-      ${conflictHtml}
-      <div class="m-hd">RISK MATRIX (D1–D11)</div>
-      <div class="matrix">${matrixRows}</div>
-      ${apHtml?`<div style="margin-bottom:16px">${apHtml}</div>`:''}
-      ${d9Html}
-      ${d.narrative?`
-        <div class="narr">
-          <div class="narr-hd">NARASI FORENSIK — Agent 6 Synthesis</div>
-          <div class="narr-txt">${esc(d.narrative).replace(/\n/g,'<br>')}</div>
-        </div>`:''}
+      ${verdictHtml(d)}
+      <details class="tech">
+        <summary>Lihat detail teknis${d.content_class ? ' · ' + esc(d.content_class) : ''}</summary>
+        ${technicalHtml(d)}
+      </details>
     </div>`;
 
   document.getElementById('results').insertBefore(card, document.getElementById('results').firstChild);
-  setTimeout(() => card.querySelectorAll('.m-b[data-w]').forEach(b => b.style.width = b.dataset.w+'%'), 100);
+  card.querySelector('.tech').addEventListener('toggle', e => {
+    if (e.target.open) card.querySelectorAll('.m-b[data-w]').forEach(b => { b.style.width = b.dataset.w + '%'; });
+  });
 }
 
 function renderError(filename, msg) {
