@@ -1,30 +1,52 @@
 // netlify/functions/session.mjs
-// Mengelola sesi: login (set cookie) dan logout (hapus cookie)
-// Mendukung multi-key: bisa set API key berbeda per agent via environment variable,
-// fallback ke key dari session jika tidak ada.
+// Mengelola key pribadi OPSIONAL: simpan (set cookie), cek, dan hapus (logout).
+// Aplikasi tetap berfungsi tanpa key pribadi (memakai key server / Netlify AI Gateway).
+
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 const COOKIE_NAME = 'uvia_session';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'uvia-default-secret-ganti-ini';
+const COOKIE_MAX_AGE = 28800; // 8 jam
+const GOOGLE_BASE = 'https://generativelanguage.googleapis.com';
+const KEY_PATTERN = /^AIza[\w-]{30,}$/;
 
-// ── Enkripsi sederhana (XOR + base64) ──────────────────────
-function encrypt(text, secret) {
-  let result = '';
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ secret.charCodeAt(i % secret.length));
+// ── Secret untuk enkripsi cookie ───────────────────────────
+// Set SESSION_SECRET di Netlify (Site settings → Environment variables).
+// Tanpa itu, secret diturunkan dari key server lain; tanpa keduanya dipakai nilai
+// bawaan (kurang aman, hanya agar fitur tetap jalan).
+function sessionSecret() {
+  const secret =
+    process.env.SESSION_SECRET ||
+    process.env.NETLIFY_AI_GATEWAY_KEY ||
+    process.env.UVIA_API_KEY ||
+    process.env.GEMINI_API_KEY;
+  if (!secret) {
+    console.warn('[Session] SESSION_SECRET belum diset — memakai secret bawaan. Segera set di Netlify.');
+    return 'uvia-default-secret-ganti-ini';
   }
-  return Buffer.from(result, 'binary').toString('base64url');
+  return secret;
 }
 
-function decrypt(encoded, secret) {
+function cipherKey() {
+  return createHash('sha256').update(sessionSecret()).digest(); // 32 byte untuk AES-256
+}
+
+// ── Enkripsi AES-256-GCM (terautentikasi) ──────────────────
+function encrypt(text) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', cipherKey(), iv);
+  const enc = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), enc]).toString('base64url');
+}
+
+function decrypt(encoded) {
   try {
-    const text = Buffer.from(encoded, 'base64url').toString('binary');
-    let result = '';
-    for (let i = 0; i < text.length; i++) {
-      result += String.fromCharCode(text.charCodeAt(i) ^ secret.charCodeAt(i % secret.length));
-    }
-    return result;
+    const buf = Buffer.from(encoded, 'base64url');
+    if (buf.length < 29) return null;
+    const decipher = createDecipheriv('aes-256-gcm', cipherKey(), buf.subarray(0, 12));
+    decipher.setAuthTag(buf.subarray(12, 28));
+    return Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]).toString('utf8');
   } catch {
-    return null;
+    return null; // cookie rusak / secret berubah / dimanipulasi
   }
 }
 
@@ -34,31 +56,17 @@ function parseCookies(cookieHeader) {
   if (!cookieHeader) return cookies;
   cookieHeader.split(';').forEach(c => {
     const [k, ...v] = c.trim().split('=');
-    cookies[k.trim()] = v.join('=');
+    if (k) cookies[k.trim()] = v.join('=');
   });
   return cookies;
 }
 
-// ── Ambil API key dari cookie (key utama) ──────────────────
+// ── Key pribadi dari cookie ────────────────────────────────
 export function getKeyFromCookie(cookieHeader) {
-  const cookies = parseCookies(cookieHeader);
-  const token = cookies[COOKIE_NAME];
+  const token = parseCookies(cookieHeader)[COOKIE_NAME];
   if (!token) return null;
-  return decrypt(token, SESSION_SECRET);
-}
-
-// ── Ambil API key untuk agent tertentu ─────────────────────
-// Prioritas: environment variable UVIA_KEY_<AGENT> → cookie
-export function getAgentKey(agentName, cookieHeader) {
-  const envVar = `UVIA_KEY_${agentName.toUpperCase()}`;
-  const envKey = process.env[envVar];
-  if (envKey && envKey.startsWith('AIza')) {
-    console.log(`[Session] Menggunakan key agent ${agentName} dari env ${envVar}`);
-    return envKey;
-  }
-  const cookieKey = getKeyFromCookie(cookieHeader);
-  if (cookieKey && cookieKey.startsWith('AIza')) return cookieKey;
-  return getPublicKey();
+  const key = decrypt(token);
+  return key && KEY_PATTERN.test(key) ? key : null;
 }
 
 // ── Key publik dari environment (UVIA_API_KEY → GEMINI_API_KEY) ──
@@ -68,57 +76,79 @@ export function getPublicKey() {
     .find(k => k && k.startsWith('AIza')) || null;
 }
 
-// ── Handler utama (cek sesi / login / logout) ──────────────
+// ── Key untuk agent tertentu ───────────────────────────────
+// Prioritas: key pribadi pengguna → UVIA_KEY_<AGENT> → key publik server.
+// Key pribadi selalu menang, supaya pengguna bisa lolos dari kuota publik yang habis.
+export function getAgentKey(agentName, cookieHeader) {
+  const personal = getKeyFromCookie(cookieHeader);
+  if (personal) return personal;
+
+  const envKey = process.env[`UVIA_KEY_${agentName.toUpperCase()}`];
+  if (envKey && envKey.startsWith('AIza')) return envKey;
+
+  return getPublicKey();
+}
+
+// ── Cek key ke Google sebelum disimpan ─────────────────────
+// Mengembalikan pesan error bila key jelas ditolak; null bila OK atau tidak bisa dipastikan.
+async function checkKeyWithGoogle(apiKey) {
+  try {
+    const res = await fetch(`${GOOGLE_BASE}/v1beta/models?pageSize=1`, {
+      headers: { 'x-goog-api-key': apiKey },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.status === 400 || res.status === 401 || res.status === 403) {
+      return 'API key ditolak oleh Google (tidak valid atau tidak punya akses).';
+    }
+  } catch {
+    // Jaringan lambat/terputus: jangan blokir penyimpanan
+  }
+  return null;
+}
+
+// ── Handler utama (cek / simpan / hapus key pribadi) ───────
+// Hanya dipakai dari origin yang sama, jadi tidak ada header CORS.
 export default async (req) => {
-  const headers = {
-    'Access-Control-Allow-Origin': req.headers.get('origin') || '*',
-    'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  };
   const reply = (status, body, extra = {}) =>
-    Response.json(body, { status, headers: { ...headers, ...extra } });
+    Response.json(body, { status, headers: { 'Cache-Control': 'no-store', ...extra } });
 
-  if (req.method === 'OPTIONS') {
-    return new Response('', { status: 200, headers });
-  }
-
-  // GET /session → Cek apakah user punya key pribadi di cookie
+  // GET /session → apakah pengguna punya key pribadi aktif?
   if (req.method === 'GET') {
-    const key = getKeyFromCookie(req.headers.get('cookie'));
-    return reply(200, { active: !!(key && key.startsWith('AIza')) });
+    return reply(200, { active: !!getKeyFromCookie(req.headers.get('cookie')) });
   }
 
-  // POST /session → Login: simpan API key ke cookie
+  // POST /session → simpan key pribadi ke cookie terenkripsi
   if (req.method === 'POST') {
     try {
-      const { apiKey } = await req.json().catch(() => ({}));
+      const { apiKey: raw } = await req.json().catch(() => ({}));
+      const apiKey = typeof raw === 'string' ? raw.trim() : '';
 
-      if (!apiKey || !apiKey.startsWith('AIza')) {
+      if (!KEY_PATTERN.test(apiKey)) {
         return reply(400, { error: 'API key Gemini tidak valid. Harus dimulai dengan AIza...' });
       }
 
-      const encrypted = encrypt(apiKey, SESSION_SECRET);
+      const rejected = await checkKeyWithGoogle(apiKey);
+      if (rejected) return reply(400, { error: rejected });
 
       const cookie = [
-        `${COOKIE_NAME}=${encrypted}`,
+        `${COOKIE_NAME}=${encrypt(apiKey)}`,
         'HttpOnly',
         'SameSite=Strict',
         'Path=/',
-        'Max-Age=28800',
+        `Max-Age=${COOKIE_MAX_AGE}`,
         'Secure',
       ].join('; ');
 
-      return reply(200, { ok: true, message: 'Sesi berhasil dibuat. Siap menganalisis.' }, { 'Set-Cookie': cookie });
+      return reply(200, { ok: true, message: 'Key pribadi tersimpan.' }, { 'Set-Cookie': cookie });
     } catch (err) {
-      return reply(500, { error: 'Gagal membuat sesi: ' + err.message });
+      return reply(500, { error: 'Gagal menyimpan key: ' + err.message });
     }
   }
 
-  // DELETE /session → Logout: hapus cookie
+  // DELETE /session → hapus key pribadi, kembali ke key publik
   if (req.method === 'DELETE') {
     const clearCookie = `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;
-    return reply(200, { ok: true, message: 'Sesi dihapus. Sampai jumpa!' }, { 'Set-Cookie': clearCookie });
+    return reply(200, { ok: true, message: 'Key pribadi dihapus.' }, { 'Set-Cookie': clearCookie });
   }
 
   return reply(405, { error: 'Method not allowed' });
